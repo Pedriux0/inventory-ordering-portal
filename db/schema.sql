@@ -6,20 +6,23 @@ USE inventory_portal;
 -- USERS 
 CREATE TABLE users (
   user_id INT PRIMARY KEY AUTO_INCREMENT,
-  full_name VARCHAR(128),
-  email VARCHAR(128) NOT NULL UNIQUE,
+  full_name VARCHAR(128) NOT NULL,
+  email VARCHAR(255) NOT NULL UNIQUE,
   password_hash CHAR(60) NOT NULL,
-  role ENUM('Admin', 'Manager', 'Staff'),
-  is_active BOOLEAN,
+  role ENUM('Admin', 'Manager', 'Staff') NOT NULL DEFAULT 'Staff',
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  -- password reset (req 2.1.5): only the hash of the token is stored
+  reset_token_hash CHAR(64) NULL,
+  reset_token_expires DATETIME NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 -- PRODUCTS
 CREATE TABLE products (
     product_id INT PRIMARY KEY AUTO_INCREMENT,
-    name VARCHAR(128) NOT NULL,
+    product_name VARCHAR(128) NOT NULL,
     description TEXT,
-    price DECIMAL(10, 2) NOT NULL,
-    stock_quantity INT NOT NULL DEFAULT 0,
+    unit_price DECIMAL(10, 2) NOT NULL,
+    current_stock INT NOT NULL DEFAULT 0,
     reorder_level INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
