@@ -1,12 +1,14 @@
 {
   "name": "inventory-managment",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "test": "jest"
+    "test": "jest",
+    "seed": "node db/seed.js",
+    "test:db": "jest --testRegex '\\.int\\.js$' --runInBand"
   },
   "keywords": [],
   "author": "",

@@ -10,6 +10,9 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME || 'inventory_portal',
   waitForConnections: true,
   connectionLimit: 10,
+  // return DATE columns (order_date, date_received) as plain 'YYYY-MM-DD' text
+  // otherwise they become javascript dates and can shift a day because of timezones
+  dateStrings: ['DATE'],
 });
 
 module.exports = pool;
