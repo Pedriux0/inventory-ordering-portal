@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, money, shortDate } from '../api'
-import { Message, StatCard, StockBadge } from '../components/ui'
+import { Message, PageHeader, StatCard, StockBadge } from '../components/ui'
 
 // dashboard (mockup 2): summary numbers, low stock alerts, recent orders
 export default function Dashboard() {
@@ -23,7 +23,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <h1>Dashboard</h1>
+      <PageHeader title="Dashboard" description="What needs your attention today." />
 
       <div className="stats">
         <StatCard label="Total products" value={data.inventory.length} />
@@ -32,24 +32,24 @@ export default function Dashboard() {
         <StatCard label="Active suppliers" value={activeSuppliers.length} />
       </div>
 
-      <section className="card">
-        <div className="card-header">
+      <section className="card card-flush">
+        <div className="card-header card-header-pad">
           <h2>Low stock alerts</h2>
           <Link to="/inventory">View all →</Link>
         </div>
         {lowStock.length === 0 ? (
-          <p className="muted">Every product is above its reorder level.</p>
+          <p className="empty">Every product is above its reorder level.</p>
         ) : (
           <table>
             <thead>
-              <tr><th>Product</th><th>Stock</th><th>Reorder level</th><th>Status</th></tr>
+              <tr><th>Product</th><th className="num">Stock</th><th className="num">Reorder level</th><th>Status</th></tr>
             </thead>
             <tbody>
               {lowStock.map((item) => (
                 <tr key={item.productId}>
-                  <td>{item.productName}</td>
-                  <td>{item.currentStock}</td>
-                  <td>{item.reorderLevel}</td>
+                  <td className="cell-title">{item.productName}</td>
+                  <td className="num">{item.currentStock}</td>
+                  <td className="num">{item.reorderLevel}</td>
                   <td><StockBadge currentStock={item.currentStock} reorderLevel={item.reorderLevel} /></td>
                 </tr>
               ))}
@@ -58,25 +58,25 @@ export default function Dashboard() {
         )}
       </section>
 
-      <section className="card">
-        <div className="card-header">
+      <section className="card card-flush">
+        <div className="card-header card-header-pad">
           <h2>Recent orders</h2>
           <Link to="/orders">View all →</Link>
         </div>
         {data.orders.length === 0 ? (
-          <p className="muted">No orders yet.</p>
+          <p className="empty">No orders yet.</p>
         ) : (
           <table>
             <thead>
-              <tr><th>Order</th><th>Date</th><th>Units</th><th>Total</th><th>By</th></tr>
+              <tr><th>Order</th><th>Date</th><th className="num">Units</th><th className="num">Total</th><th>By</th></tr>
             </thead>
             <tbody>
               {data.orders.slice(0, 5).map((order) => (
                 <tr key={order.orderId}>
-                  <td>#{order.orderId}</td>
+                  <td className="cell-title">#{order.orderId}</td>
                   <td>{shortDate(order.orderDate)}</td>
-                  <td>{order.unitCount}</td>
-                  <td>{money(order.totalAmount)}</td>
+                  <td className="num">{order.unitCount}</td>
+                  <td className="num">{money(order.totalAmount)}</td>
                   <td>{order.createdBy}</td>
                 </tr>
               ))}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, money, shortDate } from '../api'
-import { Message } from '../components/ui'
+import { Message, PageHeader } from '../components/ui'
 
 const EMPTY_LINE = { productId: '', quantity: '1' };
 
@@ -67,7 +67,7 @@ export default function Orders() {
 
   return (
     <>
-      <h1>Orders</h1>
+      <PageHeader title="Orders" description="Place a sales order and look back at past orders." />
 
       <form className="card form" onSubmit={handleSubmit} aria-label="New sales order">
         <h2>New sales order</h2>
@@ -136,15 +136,15 @@ export default function Orders() {
           <p className="muted">{shortDate(selected.orderDate)} · by {selected.createdBy}</p>
           <table>
             <thead>
-              <tr><th>Product</th><th>Qty</th><th>Unit price</th><th>Line total</th></tr>
+              <tr><th>Product</th><th className="num">Qty</th><th className="num">Unit price</th><th className="num">Line total</th></tr>
             </thead>
             <tbody>
               {selected.items.map((item) => (
                 <tr key={item.productId}>
-                  <td>{item.productName}</td>
-                  <td>{item.quantity}</td>
-                  <td>{money(item.unitPrice)}</td>
-                  <td>{money(item.unitPrice * item.quantity)}</td>
+                  <td className="cell-title">{item.productName}</td>
+                  <td className="num">{item.quantity}</td>
+                  <td className="num">{money(item.unitPrice)}</td>
+                  <td className="num">{money(item.unitPrice * item.quantity)}</td>
                 </tr>
               ))}
             </tbody>
@@ -153,28 +153,33 @@ export default function Orders() {
         </section>
       )}
 
-      <section className="card">
+      <section className="card card-flush">
         <h2>Order history</h2>
         {orders.length === 0 ? (
-          <p className="muted">No orders yet.</p>
+          <p className="empty">No orders yet. Place the first one with the form above.</p>
         ) : (
           <table>
             <thead>
-              <tr><th>Order</th><th>Date</th><th>Products</th><th>Units</th><th>Total</th><th>By</th><th><span className="sr-only">Actions</span></th></tr>
+              <tr>
+                <th>Order</th><th>Date</th><th className="num">Products</th><th className="num">Units</th>
+                <th className="num">Total</th><th>By</th><th><span className="sr-only">Actions</span></th>
+              </tr>
             </thead>
             <tbody>
               {orders.map((order) => (
                 <tr key={order.orderId}>
-                  <td>#{order.orderId}</td>
+                  <td className="cell-title">#{order.orderId}</td>
                   <td>{shortDate(order.orderDate)}</td>
-                  <td>{order.lineCount}</td>
-                  <td>{order.unitCount}</td>
-                  <td>{money(order.totalAmount)}</td>
+                  <td className="num">{order.lineCount}</td>
+                  <td className="num">{order.unitCount}</td>
+                  <td className="num">{money(order.totalAmount)}</td>
                   <td>{order.createdBy}</td>
                   <td>
-                    <button type="button" className="btn btn-small" onClick={() => openOrder(order.orderId)}>
-                      View<span className="sr-only"> order {order.orderId}</span>
-                    </button>
+                    <div className="actions">
+                      <button type="button" className="btn btn-small" onClick={() => openOrder(order.orderId)}>
+                        View<span className="sr-only"> order {order.orderId}</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -1,5 +1,10 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { LayoutDashboard, LogOut, Package, ShoppingCart, Truck, Warehouse } from 'lucide-react'
 import { useAuth } from '../auth'
+import { ThemeToggle } from './ui'
+
+// icon + text for every link: icons help recognition, the text keeps them unambiguous
+const ICON_SIZE = 20;
 
 // sidebar + top bar around every logged in page (mockup 2)
 export default function Layout() {
@@ -26,22 +31,25 @@ export default function Layout() {
           <span className="brand-logo">IP</span> Inventory Portal
         </div>
 
-        <NavLink to="/" end>Dashboard</NavLink>
-        <NavLink to="/products">Products</NavLink>
-        <NavLink to="/orders">Orders</NavLink>
-        <NavLink to="/inventory">Inventory</NavLink>
+        <NavLink to="/" end><LayoutDashboard size={ICON_SIZE} aria-hidden="true" /> Dashboard</NavLink>
+        <NavLink to="/products"><Package size={ICON_SIZE} aria-hidden="true" /> Products</NavLink>
+        <NavLink to="/orders"><ShoppingCart size={ICON_SIZE} aria-hidden="true" /> Orders</NavLink>
+        <NavLink to="/inventory"><Warehouse size={ICON_SIZE} aria-hidden="true" /> Inventory</NavLink>
 
         <p className="nav-section">Management</p>
-        <NavLink to="/suppliers">Suppliers</NavLink>
+        <NavLink to="/suppliers"><Truck size={ICON_SIZE} aria-hidden="true" /> Suppliers</NavLink>
 
-        <p className="nav-section">Account</p>
-        <button type="button" className="nav-button" onClick={handleSignOut}>
-          Sign Out
-        </button>
+        <div className="nav-bottom">
+          <p className="nav-section">Account</p>
+          <button type="button" className="nav-button" onClick={handleSignOut}>
+            <LogOut size={ICON_SIZE} aria-hidden="true" /> Sign Out
+          </button>
+        </div>
       </nav>
 
       <div className="main">
         <header className="topbar">
+          <ThemeToggle />
           <div className="user-chip">
             <div>
               <div className="user-name">{user.fullName}</div>

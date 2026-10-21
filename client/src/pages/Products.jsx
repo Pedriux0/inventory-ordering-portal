@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, money } from '../api'
-import { Message, StockBadge } from '../components/ui'
+import { Pencil, Plus } from 'lucide-react'
+import { Message, PageHeader, StockBadge } from '../components/ui'
 
 const EMPTY_FORM = { productName: '', description: '', unitPrice: '', currentStock: '', reorderLevel: '' };
 
@@ -14,7 +15,11 @@ export default function Products() {
 
   async function loadProducts() {
     try {
-      setProducts(await api.get('/products'));
+      // products that need reordering come first, most urgent at the top
+      // (stock as a share of the reorder level), everything else stays A-Z like the api sends it
+      const urgency = (p) => (p.lowStock ? p.currentStock / Math.max(p.reorderLevel, 1) : Number.MAX_VALUE);
+      const list = await api.get('/products');
+      setProducts([...list].sort((a, b) => urgency(a) - urgency(b)));
     } catch (err) {
       setError(err.message);
     }
@@ -77,14 +82,13 @@ export default function Products() {
 
   return (
     <>
-      <div className="page-header">
-        <h1>Products</h1>
+      <PageHeader title="Products" description="Everything you sell, with its price and current stock.">
         {!form && (
           <button type="button" className="btn btn-primary" onClick={openCreate}>
-            + New product
+            <Plus size={18} aria-hidden="true" /> New product
           </button>
         )}
-      </div>
+      </PageHeader>
 
       <Message type="success">{success}</Message>
       {!form && <Message>{error}</Message>}
@@ -126,32 +130,45 @@ export default function Products() {
         </form>
       )}
 
-      <section className="card">
+      <section className="card card-flush">
         <table>
           <thead>
-            <tr><th>ID</th><th>Product</th><th>Unit price</th><th>Stock</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr>
+            <tr>
+              <th>Product</th>
+              <th className="num">Stock</th>
+              <th className="num">Reorder level</th>
+              <th className="num">Unit price</th>
+              <th>Status</th>
+              <th><span className="sr-only">Actions</span></th>
+            </tr>
           </thead>
           <tbody>
             {products.map((product) => (
               <tr key={product.productId}>
-                <td>{product.productId}</td>
+                {/* the name comes first so people can scan for it, the id is secondary (NN/G) */}
                 <td>
-                  <div>{product.productName}</div>
-                  {product.description && <div className="muted small">{product.description}</div>}
+                  <div className="cell-title">{product.productName}</div>
+                  <div className="cell-sub">
+                    #{product.productId}
+                    {product.description && ` · ${product.description}`}
+                  </div>
                 </td>
-                <td>{money(product.unitPrice)}</td>
-                <td>{product.currentStock}</td>
+                <td className="num">{product.currentStock}</td>
+                <td className="num">{product.reorderLevel}</td>
+                <td className="num">{money(product.unitPrice)}</td>
                 <td><StockBadge currentStock={product.currentStock} reorderLevel={product.reorderLevel} /></td>
                 <td>
-                  <button type="button" className="btn btn-small" onClick={() => openEdit(product)}>
-                    Edit<span className="sr-only"> {product.productName}</span>
-                  </button>
+                  <div className="actions">
+                    <button type="button" className="btn btn-small" onClick={() => openEdit(product)}>
+                      <Pencil size={14} aria-hidden="true" /> Edit<span className="sr-only"> {product.productName}</span>
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {products.length === 0 && <p className="muted">No products yet.</p>}
+        {products.length === 0 && <p className="empty">No products yet. Create your first one with “New product”.</p>}
       </section>
     </>
   );

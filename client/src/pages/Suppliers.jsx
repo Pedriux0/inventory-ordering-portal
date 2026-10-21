@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useAuth } from '../auth'
-import { Message } from '../components/ui'
+import { Pencil, Plus, Power } from 'lucide-react'
+import { Message, PageHeader } from '../components/ui'
 
 const EMPTY_FORM = { supplierName: '', contactEmail: '', contactPhone: '' };
 
@@ -79,14 +80,13 @@ export default function Suppliers() {
 
   return (
     <>
-      <div className="page-header">
-        <h1>Suppliers</h1>
+      <PageHeader title="Suppliers" description="Companies that deliver your stock.">
         {canManageSuppliers && !form && (
           <button type="button" className="btn btn-primary" onClick={() => openForm(null)}>
-            + New supplier
+            <Plus size={18} aria-hidden="true" /> New supplier
           </button>
         )}
-      </div>
+      </PageHeader>
 
       {!canManageSuppliers && (
         <p className="muted">You can view suppliers. Only Managers and Admins can change them.</p>
@@ -120,34 +120,35 @@ export default function Suppliers() {
         </form>
       )}
 
-      <section className="card">
+      <section className="card card-flush">
         <table>
           <thead>
             <tr>
-              <th>ID</th><th>Supplier</th><th>Email</th><th>Phone</th><th>Status</th>
+              <th>Supplier</th><th>Email</th><th>Phone</th><th>Status</th>
               {canManageSuppliers && <th><span className="sr-only">Actions</span></th>}
             </tr>
           </thead>
           <tbody>
             {suppliers.map((s) => (
               <tr key={s.supplierId} className={s.isActive ? '' : 'inactive'}>
-                <td>{s.supplierId}</td>
-                <td>{s.supplierName}</td>
+                <td>
+                  <div className="cell-title">{s.supplierName}</div>
+                  <div className="cell-sub">#{s.supplierId}</div>
+                </td>
                 <td>{s.contactEmail || '—'}</td>
                 <td>{s.contactPhone || '—'}</td>
+                {/* only the unusual state gets a badge, "Active" stays quiet */}
                 <td>
-                  <span className={`badge ${s.isActive ? 'badge-ok' : 'badge-muted'}`}>
-                    {s.isActive ? 'Active' : 'Inactive'}
-                  </span>
+                  {s.isActive ? <span className="muted">Active</span> : <span className="badge badge-muted">Inactive</span>}
                 </td>
                 {canManageSuppliers && (
                   <td>
                     <div className="actions">
                       <button type="button" className="btn btn-small" onClick={() => openForm(s)}>
-                        Edit<span className="sr-only"> {s.supplierName}</span>
+                        <Pencil size={14} aria-hidden="true" /> Edit<span className="sr-only"> {s.supplierName}</span>
                       </button>
                       <button type="button" className="btn btn-small" onClick={() => toggleActive(s)}>
-                        {s.isActive ? 'Deactivate' : 'Reactivate'}<span className="sr-only"> {s.supplierName}</span>
+                        <Power size={14} aria-hidden="true" /> {s.isActive ? 'Deactivate' : 'Reactivate'}<span className="sr-only"> {s.supplierName}</span>
                       </button>
                     </div>
                   </td>
@@ -156,7 +157,7 @@ export default function Suppliers() {
             ))}
           </tbody>
         </table>
-        {suppliers.length === 0 && <p className="muted">No suppliers yet.</p>}
+        {suppliers.length === 0 && <p className="empty">No suppliers yet.{canManageSuppliers && ' Add your first one with “New supplier”.'}</p>}
       </section>
     </>
   );

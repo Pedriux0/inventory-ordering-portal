@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
-import { Message } from '../components/ui'
+import { Message, ThemeToggle } from '../components/ui'
 
 // login page (mockup 1, FE-01 / FE-02)
 export default function Login() {
@@ -28,6 +28,7 @@ export default function Login() {
 
   return (
     <div className="login-page">
+      <ThemeToggle className="login-theme" />
       <form className="card login-card" onSubmit={handleSubmit}>
         <div className="brand brand-dark">
           <span className="brand-logo">IP</span> Inventory Portal

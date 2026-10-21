@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, shortDate, today } from '../api'
-import { Message, StockBadge } from '../components/ui'
+import { Message, PageHeader, StockBadge } from '../components/ui'
 
 // inventory page: current stock (FE-11, req 2.5.4) + record a receipt (FE-10, req 2.5.2)
 export default function Inventory() {
@@ -57,7 +57,7 @@ export default function Inventory() {
 
   return (
     <>
-      <h1>Inventory</h1>
+      <PageHeader title="Inventory" description="Current stock levels, and stock that arrived from suppliers." />
 
       <form className="card form" onSubmit={handleSubmit} aria-label="Record inventory receipt">
         <h2>Record inventory receipt</h2>
@@ -97,18 +97,18 @@ export default function Inventory() {
         </div>
       </form>
 
-      <section className="card">
+      <section className="card card-flush">
         <h2>Current stock</h2>
         <table>
           <thead>
-            <tr><th>Product</th><th>Stock</th><th>Reorder level</th><th>Status</th></tr>
+            <tr><th>Product</th><th className="num">Stock</th><th className="num">Reorder level</th><th>Status</th></tr>
           </thead>
           <tbody>
             {stock.map((item) => (
               <tr key={item.productId}>
-                <td>{item.productName}</td>
-                <td data-cy="stock">{item.currentStock}</td>
-                <td>{item.reorderLevel}</td>
+                <td className="cell-title">{item.productName}</td>
+                <td className="num" data-cy="stock">{item.currentStock}</td>
+                <td className="num">{item.reorderLevel}</td>
                 <td><StockBadge currentStock={item.currentStock} reorderLevel={item.reorderLevel} /></td>
               </tr>
             ))}
@@ -116,23 +116,25 @@ export default function Inventory() {
         </table>
       </section>
 
-      <section className="card">
+      <section className="card card-flush">
         <h2>Recent receipts</h2>
         {receipts.length === 0 ? (
-          <p className="muted">No receipts recorded yet.</p>
+          <p className="empty">No receipts recorded yet. Use the form above when stock arrives.</p>
         ) : (
           <table>
             <thead>
-              <tr><th>#</th><th>Date</th><th>Product</th><th>Supplier</th><th>Qty</th><th>Received by</th></tr>
+              <tr><th>Date</th><th>Product</th><th>Supplier</th><th className="num">Qty</th><th>Received by</th></tr>
             </thead>
             <tbody>
               {receipts.map((r) => (
                 <tr key={r.receiptId}>
-                  <td>{r.receiptId}</td>
-                  <td>{shortDate(r.dateReceived)}</td>
-                  <td>{r.productName}</td>
+                  <td>
+                    <div>{shortDate(r.dateReceived)}</div>
+                    <div className="cell-sub">Receipt #{r.receiptId}</div>
+                  </td>
+                  <td className="cell-title">{r.productName}</td>
                   <td>{r.supplierName}</td>
-                  <td>+{r.quantityReceived}</td>
+                  <td className="num">+{r.quantityReceived}</td>
                   <td>{r.receivedBy}</td>
                 </tr>
               ))}
