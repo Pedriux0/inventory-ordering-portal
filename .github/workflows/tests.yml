@@ -93,9 +93,12 @@ jobs:
         uses: cypress-io/github-action@v6
         with:
           working-directory: client
-          start: npx vite --port 5173
-          wait-on: http://localhost:5173
+          # 127.0.0.1 on purpose: "localhost" can mean IPv6 (::1) for vite but IPv4 for the wait check
+          start: npx vite --port 5173 --host 127.0.0.1
+          wait-on: http://127.0.0.1:5173
           config: video=true
+        env:
+          CYPRESS_BASE_URL: http://127.0.0.1:5173
       - name: Save the test videos
         if: always()
         uses: actions/upload-artifact@v4
