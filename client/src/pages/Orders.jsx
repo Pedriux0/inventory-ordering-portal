@@ -1,15 +1,20 @@
 import { useEffect, useState } from 'react'
 import { api, money, shortDate } from '../api'
+import { useAuth } from '../auth'
 import { Message } from '../components/ui'
 
 const EMPTY_LINE = { productId: '', quantity: '1' };
 
 // orders page: process a sales order (FE-04, req 2.5.3) + order history (mockup 6)
+// client change to req 2.5.3 (2026-10-21): Staff orders go to a Manager for approval first,
+// Managers and Admins place orders directly
 export default function Orders() {
+  const { canManageSuppliers: canOrderDirectly } = useAuth(); // Managers and Admins
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [lines, setLines] = useState([EMPTY_LINE]);
   const [confirmed, setConfirmed] = useState(null); // the last order that went through
+  const [sentForApproval, setSentForApproval] = useState(null); // the last Staff order sent to a Manager
   const [selected, setSelected] = useState(null); // order opened in the details panel
   const [error, setError] = useState('');
 
@@ -45,11 +50,15 @@ export default function Orders() {
     event.preventDefault();
     setError('');
     setConfirmed(null);
+    setSentForApproval(null);
+    const items = lines.map((line) => ({ productId: Number(line.productId), quantity: Number(line.quantity) }));
     try {
-      const order = await api.post('/orders', {
-        items: lines.map((line) => ({ productId: Number(line.productId), quantity: Number(line.quantity) })),
-      });
-      setConfirmed(order);
+      if (canOrderDirectly) {
+        setConfirmed(await api.post('/orders', { items }));
+      } else {
+        // Staff: the order waits for a Manager, stock only goes down once it is approved
+        setSentForApproval(await api.post('/order-requests', { items }));
+      }
       setLines([EMPTY_LINE]);
       loadAll();
     } catch (err) {
@@ -71,7 +80,16 @@ export default function Orders() {
 
       <form className="card form" onSubmit={handleSubmit} aria-label="New sales order">
         <h2>New sales order</h2>
+        {!canOrderDirectly && (
+          <p className="muted small">A Manager approves your order before it is processed. You can follow it on the Requests page.</p>
+        )}
         <Message>{error}</Message>
+        {sentForApproval && (
+          <Message type="success">
+            Order sent to a Manager for approval (request #{sentForApproval.orderRequestId}, estimated total{' '}
+            {money(sentForApproval.estimatedTotal)}).
+          </Message>
+        )}
         {confirmed && (
           <Message type="success">
             Order #{confirmed.orderId} confirmed, total {money(confirmed.totalAmount)}.
@@ -123,7 +141,7 @@ export default function Orders() {
             + Add product
           </button>
           <span className="order-total">Estimated total: <strong>{money(estimatedTotal)}</strong></span>
-          <button type="submit" className="btn btn-primary">Place order</button>
+          <button type="submit" className="btn btn-primary">{canOrderDirectly ? 'Place order' : 'Send for approval'}</button>
         </div>
       </form>
 

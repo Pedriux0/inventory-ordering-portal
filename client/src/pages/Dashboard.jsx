@@ -17,8 +17,12 @@ export default function Dashboard() {
       api.get('/orders'),
       api.get('/suppliers'),
       api.get('/purchase-requests?status=Pending'),
+      api.get('/order-requests?status=Pending'),
     ])
-      .then(([inventory, orders, suppliers, pendingRequests]) => setData({ inventory, orders, suppliers, pendingRequests }))
+      .then(([inventory, orders, suppliers, pendingPurchases, pendingOrders]) =>
+        // one number for everything waiting: sales orders from Staff + purchase requests
+        setData({ inventory, orders, suppliers, pendingRequests: [...pendingOrders, ...pendingPurchases] })
+      )
       .catch((err) => setError(err.message));
   }, []);
 
@@ -43,7 +47,7 @@ export default function Dashboard() {
       {canApprove && data.pendingRequests.length > 0 && (
         <section className="card pending-box">
           <div className="card-header">
-            <h2>{data.pendingRequests.length} purchase request{data.pendingRequests.length === 1 ? '' : 's'} waiting for your approval</h2>
+            <h2>{data.pendingRequests.length} request{data.pendingRequests.length === 1 ? '' : 's'} waiting for your approval</h2>
             <Link to="/requests">Review →</Link>
           </div>
         </section>

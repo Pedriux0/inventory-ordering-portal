@@ -150,7 +150,7 @@ See [deploy/DEPLOY.md](deploy/DEPLOY.md) for the Hostinger VPS setup: NGINX serv
 ## Status
 
 - **Milestone 1 (v1.0.0):** login, logout, password-reset request, role-based access, profile and admin account management (API only).
-- **Milestone 2 (v2.0.0 → v2.2.0):** purchase requests with Manager approval (2.2.5, v2.2.0), products (2.4.1, 2.5.1), inventory receipts and stock (2.4.2, 2.5.2, 2.5.4), sales orders (2.4.3, 2.5.3), suppliers (2.2.5, 2.4.4, 2.5.6), the React frontend for all of these, and the deploy configuration.
+- **Milestone 2 (v2.0.0 → v2.3.0):** Staff sales orders need Manager approval (client change to 2.5.3, v2.3.0), purchase requests with Manager approval (2.2.5, v2.2.0), products (2.4.1, 2.5.1), inventory receipts and stock (2.4.2, 2.5.2, 2.5.4), sales orders (2.4.3, 2.5.3), suppliers (2.2.5, 2.4.4, 2.5.6), the React frontend for all of these, and the deploy configuration.
 - **Not built yet:** search, sort and pagination (Week 7), the reset-token "set new password" endpoint, and the profile and user-admin screens (the API for them exists).
 
 Requirement-by-requirement walkthroughs: [MILESTONE_1_OVERVIEW.md](MILESTONE_1_OVERVIEW.md) and [MILESTONE_2_OVERVIEW.md](MILESTONE_2_OVERVIEW.md).

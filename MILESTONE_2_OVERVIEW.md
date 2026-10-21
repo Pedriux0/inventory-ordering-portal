@@ -28,7 +28,9 @@ All of these need a valid JWT.
 | `GET /api/inventory` | any role | 2.5.4, **API-10** |
 | `POST /api/inventory/receipts` | any role | 2.5.2, **API-09** |
 | `GET /api/inventory/receipts` | any role | latest 25 receipts |
-| `POST /api/orders` | any role | 2.5.3, **API-04** |
+| `POST /api/orders` | **Manager, Admin** (Staff get 403, since v2.3.0) | 2.5.3, **API-04** |
+| `POST /api/order-requests`, `GET /api/order-requests` (`?status=Pending`) | any role (Staff send their orders here) | 2.5.3 (client change), **API-19** |
+| `PUT /api/order-requests/:id/decision` | Manager, Admin | 2.5.3 (client change), **API-20** |
 | `GET /api/orders`, `GET /api/orders/:id` | any role | order history and details |
 | `GET /api/suppliers`, `GET /api/suppliers/:id` | any role | 2.2.5 |
 | `POST /api/suppliers` | Manager, Admin | 2.5.6, **API-15** |
@@ -79,7 +81,7 @@ An order body is `{ items: [{ productId, quantity }, ...] }`, because req 2.4.3 
 | 2.4.4 Store supplier data | Done |
 | 2.5.1 Staff create and update products | Done (API + UI) |
 | 2.5.2 Staff record receipts | Done (API + UI) |
-| 2.5.3 Staff process sales orders | Done (API + UI) |
+| 2.5.3 Staff process sales orders | Done, with a **client-requested change (2026-10-21)**: Staff orders are sent to a Manager, who approves (the order is processed) or declines with a reason. Managers and Admins order directly. |
 | 2.5.4 Staff view current inventory | Done (API + UI) |
 | 2.5.6 Manager manages suppliers | Done (Manager + Admin) |
 | 2.2.5 Manager supplier access + inventory approval | Done (v2.2.0). Inventory approval = **purchase requests**: Staff request products from a supplier, and a Manager or Admin approves or declines them (a decline needs a reason). Managers' and Admins' own requests are approved straight away. Approving doesn't change stock; receipts still do. |
@@ -90,9 +92,9 @@ An order body is `{ items: [{ productId, quantity }, ...] }`, because req 2.4.3 
 
 | Suite | Count | How |
 |---|---|---|
-| `npm test` | 107 tests in 15 suites (38 from Milestone 1 + 52 + 17 for purchase requests) | Jest + Supertest, models mocked |
-| `npm run test:db` | 11 tests | Real MariaDB: UT-09, receipt +25, order −10, rollback on oversell, two simultaneous orders, deactivated supplier refused, request Pending/auto-approved, two managers deciding at once |
-| `client: npm run test:e2e` | 14 tests | Cypress in a real browser: FE-01, 02, 03, 04, 05, 10, 11, 16, 17, plus validation, oversell, Staff read-only, decline-with-reason and Manager auto-approval |
+| `npm test` | 118 tests in 16 suites (38 Milestone 1 + 52 + 17 purchase requests + 11 order approvals) | Jest + Supertest, models mocked |
+| `npm run test:db` | 16 tests | Real MariaDB: UT-09, receipt +25, order −10, rollback on oversell, two simultaneous orders, deactivated supplier refused, request Pending/auto-approved, two managers deciding at once, order approval takes stock once / rolls back when stock ran out |
+| `client: npm run test:e2e` | 16 tests | Cypress in a real browser: FE-01, 02, 03, 04 (Staff → Manager approval), 05, 10, 11, 16, 17, plus validation, oversell, Staff read-only, declines with reasons, Manager direct order and auto-approval |
 
 | Test ID | Where |
 |---|---|
@@ -112,7 +114,7 @@ An order body is `{ items: [{ productId, quantity }, ...] }`, because req 2.4.3 
 2. **Wrong password** → error message (FE-02). **Log in as Staff** (`staff@demo.com`) → dashboard with low-stock alerts (FE-01).
 3. **Products** → New product → fill in the form → it appears in the list (FE-03). Submit with no name → "Product name is required" (UT-05).
 4. **Inventory** → record 25 Wireless Mouse from Northwind → the stock goes up by 25 (FE-10, FE-11).
-5. **Orders** → 2 products → Place order → "Order #N confirmed" and the stock goes down (FE-04). Try 100000 units → "Not enough stock", and nothing is saved.
+5. **Orders** as Staff → 2 products → **Send for approval** → "sent to a Manager for approval" (the stock doesn't change yet). Try 100000 units → "Not enough stock". Later, as Manager: **Requests** → approve the sales order → it becomes a real order and the stock goes down (FE-04).
 6. **Suppliers** as Staff → read-only, no buttons. Sign out, **log in as Manager** → create a supplier → it's in the list (FE-05) → deactivate it → it no longer appears in the receipt form.
 7. **Requests** (v2.2.0): as Staff, request 40 × Wireless Mouse → "sent for approval" (FE-16). Log in as Manager → the dashboard shows "1 purchase request waiting for your approval" → Review → **Approve** (FE-17). Then decline another one, which requires a reason. A Manager's own request is approved straight away.
 
@@ -143,6 +145,18 @@ The client defined req 2.2.5's "inventory approval" as **purchase requests**:
 **Questions you might get**
 - **"Why doesn't approving add stock?"** "Approval only means 'yes, order it'. The stock goes up when the products physically arrive and someone records the receipt, so the numbers always match what's on the shelf."
 - **"Why does declining need a reason?"** "So the staff member knows what to do next, for example 'order 50, not 500'."
+
+## 7c. Staff sales orders need approval (client change, v2.3.0)
+
+On 2026-10-21 the client changed req 2.5.3: **Staff can't place sales orders without approval.**
+- On the Orders page, Staff click **Send for approval**. The order waits on **/requests** under "Sales orders waiting for approval".
+- A **Manager or Admin approves** it: the real order is created and the stock goes down, in one transaction, using exactly the same order code as before. Or they **decline** it, with a reason.
+- **Stock goes down on approval, not when the order is sent.** If the stock ran out in between, the approval is refused ("Not enough stock"), nothing changes, and the Manager can decline it.
+- The sale is recorded under the **Staff member who made it**. The approver is recorded on the request and in the audit log.
+- Managers and Admins still order directly. **The API enforces the rule:** a Staff call to `POST /api/orders` gets 403 and is logged.
+- **New tables:** `order_requests` and `order_request_items` (migration `002`). The `orders` table still holds only real, approved sales.
+- **Two managers approving at the same moment** create only one order (tested on the real database).
+- **New test IDs:** API-19, API-20.
 
 ## 8. Not built yet
 

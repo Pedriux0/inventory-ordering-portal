@@ -82,10 +82,11 @@ After that, the Admin creates the other accounts through `POST /api/users`.
 
 ## Updating later
 
-If the new version adds tables, run its migration once before restarting. For example, v2.2.0 needs:
+If the new version adds tables, run its migrations once before restarting (they're safe to run again). For example:
 
 ```bash
-mysql inventory_portal < db/migrations/001_purchase_requests.sql
+mysql inventory_portal < db/migrations/001_purchase_requests.sql   # v2.2.0
+mysql inventory_portal < db/migrations/002_order_requests.sql      # v2.3.0
 ```
 
 

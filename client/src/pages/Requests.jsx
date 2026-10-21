@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, shortDate } from '../api'
+import { api, money, shortDate } from '../api'
 import { useAuth } from '../auth'
 import { Message } from '../components/ui'
 
@@ -8,12 +8,17 @@ const EMPTY_FORM = { productId: '', supplierId: '', quantity: '', note: '' };
 // status label colors: waiting = amber, approved = green, declined = red (with the word, not color alone)
 const STATUS_BADGE = { Pending: 'badge-low', Approved: 'badge-ok', Declined: 'badge-critical' };
 
-// purchase requests page (req 2.2.5, "inventory approval")
+// requests page: everything that waits for a Manager's approval
+// 1. sales orders from Staff (client change to req 2.5.3): approving processes the order
+// 2. purchase requests (req 2.2.5, "inventory approval")
 // Staff ask for products to be ordered from a supplier, a Manager or Admin approves or declines.
 // Managers and Admins dont need approval: their requests are approved straight away.
 export default function Requests() {
   const { user, canManageSuppliers: canApprove } = useAuth(); // same roles: Manager and Admin
   const [requests, setRequests] = useState([]);
+  const [orderRequests, setOrderRequests] = useState([]);
+  const [decliningOrder, setDecliningOrder] = useState(null); // id of the sales order being declined
+  const [orderReason, setOrderReason] = useState('');
   const [products, setProducts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -26,11 +31,13 @@ export default function Requests() {
 
   async function loadAll() {
     try {
-      const [requestList, productList, supplierList] = await Promise.all([
+      const [orderRequestList, requestList, productList, supplierList] = await Promise.all([
+        api.get('/order-requests'),
         api.get('/purchase-requests'),
         api.get('/products'),
         api.get('/suppliers'),
       ]);
+      setOrderRequests(orderRequestList);
       setRequests(requestList);
       setProducts(productList);
       setSuppliers(supplierList.filter((s) => s.isActive)); // only active suppliers can be ordered from
@@ -101,15 +108,113 @@ export default function Requests() {
     });
   }
 
+  // sales orders: approving creates the real order and takes the stock
+  function approveOrder(request) {
+    once(async () => {
+      const updated = await api.put(`/order-requests/${request.orderRequestId}/decision`, { decision: 'Approved' });
+      setSuccess(`Sales order request #${request.orderRequestId} approved: it is now order #${updated.orderId}.`);
+      loadAll();
+    });
+  }
+
+  function confirmDeclineOrder(request) {
+    once(async () => {
+      await api.put(`/order-requests/${request.orderRequestId}/decision`, { decision: 'Declined', note: orderReason });
+      setSuccess(`Sales order request #${request.orderRequestId} declined.`);
+      setDecliningOrder(null);
+      setOrderReason('');
+      loadAll();
+    });
+  }
+
+  const pendingOrders = orderRequests.filter((r) => r.status === 'Pending');
+  const decidedOrders = orderRequests.filter((r) => r.status !== 'Pending');
   const pending = requests.filter((r) => r.status === 'Pending');
   const decided = requests.filter((r) => r.status !== 'Pending');
 
   return (
     <>
-      <h1>Purchase requests</h1>
+      <h1>Requests</h1>
 
       <Message>{error}</Message>
       <Message type="success">{success}</Message>
+
+      <section className="card">
+        <h2>Sales orders waiting for approval ({pendingOrders.length})</h2>
+        <p className="muted small">Orders placed by Staff. Approving processes the order and takes the stock.</p>
+        {!loaded ? (
+          <p className="muted">Loading...</p>
+        ) : pendingOrders.length === 0 ? (
+          <p className="muted">No sales orders are waiting.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>Products</th><th>Estimated total</th><th>Requested by</th>
+                {canApprove && <th><span className="sr-only">Actions</span></th>}
+              </tr>
+            </thead>
+            <tbody>
+              {pendingOrders.map((r) => (
+                <tr key={r.orderRequestId}>
+                  <td>{r.orderRequestId}</td>
+                  <td>
+                    {r.items.map((i) => (
+                      <div key={i.productId}>
+                        {i.quantity} × {i.productName}
+                        {i.quantity > i.inStock && <span className="badge badge-critical">only {i.inStock} in stock</span>}
+                      </div>
+                    ))}
+                  </td>
+                  <td>{money(r.estimatedTotal)}</td>
+                  <td>
+                    {r.requestedBy}
+                    <div className="muted small">{shortDate(r.createdAt)}</div>
+                  </td>
+                  {canApprove && (
+                    <td>
+                      {decliningOrder === r.orderRequestId ? (
+                        <div className="decline-box">
+                          <label htmlFor={`order-reason-${r.orderRequestId}`} className="small">Reason for declining</label>
+                          <input
+                            id={`order-reason-${r.orderRequestId}`}
+                            value={orderReason}
+                            onChange={(e) => setOrderReason(e.target.value)}
+                            maxLength={255}
+                            autoFocus
+                          />
+                          <div className="actions">
+                            <button type="button" className="btn btn-small" onClick={() => confirmDeclineOrder(r)} disabled={!orderReason.trim()}>
+                              Confirm decline
+                            </button>
+                            <button type="button" className="btn btn-small" onClick={() => setDecliningOrder(null)}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="actions">
+                          <button type="button" className="btn btn-small btn-primary" onClick={() => approveOrder(r)}>
+                            Approve<span className="sr-only"> sales order request {r.orderRequestId}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-small"
+                            onClick={() => {
+                              setDecliningOrder(r.orderRequestId);
+                              setOrderReason('');
+                            }}
+                          >
+                            Decline<span className="sr-only"> sales order request {r.orderRequestId}</span>
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
 
       <form className="card form" onSubmit={handleSubmit} aria-label="New purchase request">
         <h2>{canApprove ? 'Order products' : 'Request products'}</h2>
@@ -152,11 +257,11 @@ export default function Requests() {
       </form>
 
       <section className="card">
-        <h2>Waiting for approval ({pending.length})</h2>
+        <h2>Purchase requests waiting for approval ({pending.length})</h2>
         {!loaded ? (
           <p className="muted">Loading...</p>
         ) : pending.length === 0 ? (
-          <p className="muted">No requests are waiting.</p>
+          <p className="muted">No purchase requests are waiting.</p>
         ) : (
           <table>
             <thead>
@@ -224,7 +329,38 @@ export default function Requests() {
       </section>
 
       <section className="card">
-        <h2>History</h2>
+        <h2>Sales order history</h2>
+        {loaded && decidedOrders.length === 0 ? (
+          <p className="muted">No decided sales orders yet.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr><th>#</th><th>Products</th><th>Requested by</th><th>Status</th><th>Decided by</th></tr>
+            </thead>
+            <tbody>
+              {decidedOrders.map((r) => (
+                <tr key={r.orderRequestId}>
+                  <td>{r.orderRequestId}</td>
+                  <td>{r.items.map((i) => `${i.quantity} × ${i.productName}`).join(', ')}</td>
+                  <td>{r.requestedBy}</td>
+                  <td>
+                    <span className={`badge ${STATUS_BADGE[r.status]}`}>{r.status}</span>
+                    {r.orderId && <div className="muted small">became order #{r.orderId}</div>}
+                    {r.decisionNote && <div className="muted small">{r.decisionNote}</div>}
+                  </td>
+                  <td>
+                    {r.decidedBy}
+                    <div className="muted small">{shortDate(r.decidedAt)}</div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="card">
+        <h2>Purchase request history</h2>
         {loaded && decided.length === 0 ? (
           <p className="muted">No decided requests yet.</p>
         ) : (

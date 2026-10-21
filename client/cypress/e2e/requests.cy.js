@@ -14,7 +14,7 @@ describe('purchase requests (req 2.2.5)', () => {
     cy.contains('button', 'Send request').click();
 
     cy.get('[role=status]').should('contain', 'sent for approval');
-    cy.contains('h2', 'Waiting for approval').parent().contains('tr', 'Wireless Mouse M200').should('contain', '40');
+    cy.contains('h2', 'Purchase requests waiting').parent().contains('tr', 'Wireless Mouse M200').should('contain', '40');
     // Staff cannot approve
     cy.contains('button', 'Approve').should('not.exist');
   });
@@ -24,9 +24,9 @@ describe('purchase requests (req 2.2.5)', () => {
     cy.loginAs('Manager');
     // the dashboard tells the manager something is waiting
     cy.contains('waiting for your approval').parent().contains('a', 'Review').click();
-    cy.contains('h2', 'Waiting for approval').parent().contains('tr', 'weekend promotion').contains('button', 'Approve').click();
+    cy.contains('h2', 'Purchase requests waiting').parent().contains('tr', 'weekend promotion').contains('button', 'Approve').click();
     cy.get('[role=status]').should('contain', 'approved');
-    cy.contains('h2', 'History').parent().contains('tr', 'Wireless Mouse M200').should('contain', 'Approved').and('contain', 'Morgan Manager');
+    cy.contains('h2', 'Purchase request history').parent().contains('tr', 'Wireless Mouse M200').should('contain', 'Approved').and('contain', 'Morgan Manager');
   });
 
   it('declining needs a reason, and the reason is shown', () => {
@@ -46,7 +46,7 @@ describe('purchase requests (req 2.2.5)', () => {
     cy.focused().type('500 is too many, order 50');
     cy.contains('button', 'Confirm decline').click();
     cy.get('[role=status]').should('contain', 'declined');
-    cy.contains('h2', 'History').parent().contains('tr', 'USB-C Hub 7-Port')
+    cy.contains('h2', 'Purchase request history').parent().contains('tr', 'USB-C Hub 7-Port')
       .should('contain', 'Declined').and('contain', '500 is too many, order 50');
   });
 
@@ -59,6 +59,6 @@ describe('purchase requests (req 2.2.5)', () => {
     cy.get('#quantity').type('30');
     cy.contains('button', 'Order products').click();
     cy.get('[role=status]').should('contain', 'approved');
-    cy.contains('h2', 'History').parent().contains('tr', 'Mechanical Keyboard K1').should('contain', 'Approved');
+    cy.contains('h2', 'Purchase request history').parent().contains('tr', 'Mechanical Keyboard K1').should('contain', 'Approved');
   });
 });
