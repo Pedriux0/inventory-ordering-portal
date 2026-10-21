@@ -22,8 +22,12 @@ export default function Dashboard() {
       api.get('/orders'),
       api.get('/suppliers'),
       api.get('/purchase-requests?status=Pending'),
+      api.get('/order-requests?status=Pending'),
     ])
-      .then(([inventory, orders, suppliers, pendingRequests]) => setData({ inventory, orders, suppliers, pendingRequests }))
+      .then(([inventory, orders, suppliers, pendingPurchases, pendingOrders]) =>
+        // one number for everything waiting: sales orders from Staff + purchase requests
+        setData({ inventory, orders, suppliers, pendingRequests: [...pendingOrders, ...pendingPurchases] })
+      )
       .catch((err) => setError(err.message));
   }, []);
 
@@ -84,7 +88,7 @@ export default function Dashboard() {
         <section className="card approval-banner" aria-label="Requests waiting for approval">
           <p>
             <Clock size={18} aria-hidden="true" />
-            {plural(data.pendingRequests.length, 'purchase request')} waiting for your approval
+            {plural(data.pendingRequests.length, 'request')} waiting for your approval
           </p>
           <Link className="btn btn-small" to="/requests">
             <ClipboardCheck size={14} aria-hidden="true" /> Review

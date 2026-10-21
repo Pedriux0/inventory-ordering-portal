@@ -520,6 +520,9 @@ a.btn { text-decoration: none; }
 .card-header-pad { padding: var(--space-5) var(--space-5) var(--space-3); }
 .card-header-pad h2 { margin: 0; }
 
+/* Waiting / All switch above the two request lists */
+.requests-toolbar { display: flex; justify-content: flex-end; margin-bottom: var(--space-3); }
+
 /* manager's "waiting for your approval" banner on the dashboard */
 .approval-banner {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap;

@@ -37,8 +37,8 @@ describe('UX evaluation fixes', () => {
     cy.loginAs('Staff');
     cy.visit('/orders');
     cy.pickProduct('#product-0', 'Notebook A5 Dotted');
-    cy.get('#quantity-0').clear().type('1{enter}'); // Enter places the order
-    cy.get('[role=status]').should('contain', 'confirmed');
+    cy.get('#quantity-0').clear().type('1{enter}'); // Enter sends the order (Staff: for approval)
+    cy.get('[role=status]').should('contain', 'sent to a Manager');
     cy.focused().should('have.id', 'product-0');
   });
 });

@@ -64,17 +64,18 @@ export default function Inventory() {
   }
 
   // quick action from the dashboard: ?receive=<productId> (or ?receive=1 with no product)
+  // runs ONCE, when the data has finished loading (loaded turns true once). It must not depend
+  // on the product list itself: that list can load a second time (react dev mode, a slow
+  // network) and re-opening the panel then would wipe what the user already typed
+  const receiveParam = searchParams.get('receive');
   useEffect(() => {
-    const receive = searchParams.get('receive');
-    if (receive && products.length > 0) {
-      const id = Number(receive);
-      openReceive(products.some((p) => p.productId === id) ? id : '');
-      const rest = new URLSearchParams(searchParams);
-      rest.delete('receive');
-      setSearchParams(rest, { replace: true });
-    }
-    // wait until products are loaded, so the product can be found
-  }, [searchParams, products]);
+    if (!receiveParam || !loaded) return;
+    const id = Number(receiveParam);
+    openReceive(products.some((p) => p.productId === id) ? id : '');
+    const rest = new URLSearchParams(searchParams);
+    rest.delete('receive');
+    setSearchParams(rest, { replace: true });
+  }, [receiveParam, loaded]);
 
   function setFilter(low) {
     setSearchParams(low ? { filter: 'low' } : {}, { replace: true });

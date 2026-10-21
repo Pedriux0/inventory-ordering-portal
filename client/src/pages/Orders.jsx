@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Plus, ShoppingCart, Trash2 } from 'lucide-react'
 import { api, displayDate, money, plural } from '../api'
+import { useAuth } from '../auth'
 import Drawer from '../components/Drawer'
 import ProductPicker from '../components/ProductPicker'
 import { useToast } from '../components/Toast'
@@ -15,7 +16,10 @@ const newLine = () => ({ key: nextLineKey++, productId: '', quantity: '1' });
 // docs/UI_RESEARCH.md section C: searchable product picker, stock + price on every option,
 // a warning while typing if you ask for more than is in stock, and an order summary to check
 // before placing the order. The server still checks stock again inside a transaction.
+// client change to req 2.5.3 (2026-10-21): Staff orders are sent to a Manager for approval
+// (stock goes down when approved), Managers and Admins place orders directly
 export default function Orders() {
+  const { canManageSuppliers: canOrderDirectly } = useAuth(); // Managers and Admins
   const toast = useToast();
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -91,10 +95,15 @@ export default function Orders() {
 
     await guard(async () => {
       try {
-        const order = await api.post('/orders', {
-          items: lines.map((line) => ({ productId: Number(line.productId), quantity: Number(line.quantity) })),
-        });
-        toast(`Order #${order.orderId} confirmed, total ${money(order.totalAmount)}.`);
+        const items = lines.map((line) => ({ productId: Number(line.productId), quantity: Number(line.quantity) }));
+        if (canOrderDirectly) {
+          const order = await api.post('/orders', { items });
+          toast(`Order #${order.orderId} confirmed, total ${money(order.totalAmount)}.`);
+        } else {
+          // Staff: it waits for a Manager, the stock only goes down once it is approved
+          const request = await api.post('/order-requests', { items });
+          toast(`Order sent to a Manager for approval (request #${request.orderRequestId}, ${money(request.estimatedTotal)}).`);
+        }
         setLines([newLine()]);
         setSubmitted(false);
         loadAll();
@@ -116,7 +125,14 @@ export default function Orders() {
 
   return (
     <>
-      <PageHeader title="Orders" description="Build a sales order, check the summary, then place it." />
+      <PageHeader
+        title="Orders"
+        description={
+          canOrderDirectly
+            ? 'Build a sales order, check the summary, then place it.'
+            : 'Build a sales order and send it to a Manager. It is processed once approved.'
+        }
+      />
       <Message>{loadError}</Message>
 
       <div className="orders-layout">
@@ -199,9 +215,14 @@ export default function Orders() {
             <strong>{money(total)}</strong>
           </div>
           <button type="submit" form="order-form" className="btn btn-primary btn-block" disabled={placing}>
-            <ShoppingCart size={18} aria-hidden="true" /> {placing ? 'Placing order...' : 'Place order'}
+            <ShoppingCart size={18} aria-hidden="true" />{' '}
+            {placing ? 'Sending...' : canOrderDirectly ? 'Place order' : 'Send for approval'}
           </button>
-          <p className="hint">Stock is checked again when the order is placed.</p>
+          <p className="hint">
+            {canOrderDirectly
+              ? 'Stock is checked again when the order is placed.'
+              : 'A Manager approves it on the Requests page. Stock is checked again then.'}
+          </p>
         </aside>
       </div>
 

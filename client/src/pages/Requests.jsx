@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Check, CircleCheck, CircleX, Clock, Plus, X } from 'lucide-react'
-import { api, displayDate } from '../api'
+import { api, displayDate, money } from '../api'
 import { useAuth } from '../auth'
 import Drawer from '../components/Drawer'
 import ProductPicker from '../components/ProductPicker'
@@ -23,7 +23,9 @@ function StatusBadge({ status }) {
   return <span className="badge badge-low"><Clock size={13} aria-hidden="true" /> Pending</span>;
 }
 
-// purchase requests (req 2.2.5, "inventory approval")
+// requests: everything that waits for a Manager's approval
+// 1. sales orders from Staff (client change to req 2.5.3): approving processes the order
+// 2. purchase requests (req 2.2.5, "inventory approval")
 // Staff ask for products to be ordered from a supplier, a Manager or Admin approves or declines.
 // Managers and Admins dont need approval: their requests are approved straight away.
 // /requests?product=5 opens a new request with product 5 already chosen (from the dashboard)
@@ -32,6 +34,7 @@ export default function Requests() {
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [requests, setRequests] = useState([]);
+  const [orderRequests, setOrderRequests] = useState([]);
   const [products, setProducts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loaded, setLoaded] = useState(false);
@@ -46,7 +49,7 @@ export default function Requests() {
   const [serverError, setServerError] = useState('');
   const formRef = useRef(null);
 
-  // decline panel
+  // decline panel, for both kinds: { kind: 'order' | 'purchase', id, summary }
   const [declining, setDeclining] = useState(null);
   const [reason, setReason] = useState('');
   const [reasonError, setReasonError] = useState('');
@@ -55,11 +58,13 @@ export default function Requests() {
 
   async function loadAll() {
     try {
-      const [requestList, productList, supplierList] = await Promise.all([
+      const [orderRequestList, requestList, productList, supplierList] = await Promise.all([
+        api.get('/order-requests'),
         api.get('/purchase-requests'),
         api.get('/products'),
         api.get('/suppliers'),
       ]);
+      setOrderRequests(orderRequestList);
       setRequests(requestList);
       setProducts(productList);
       setSuppliers(supplierList.filter((s) => s.isActive)); // only active suppliers can be ordered from
@@ -82,16 +87,17 @@ export default function Requests() {
   }
 
   // coming from the dashboard: ?product=<id> opens the panel with that product chosen
+  // runs ONCE, when the data has finished loading (same reason as on the Inventory page:
+  // a second load of the product list must not reset a form the user is already filling in)
+  const productParam = searchParams.get('product');
   useEffect(() => {
-    const product = searchParams.get('product');
-    if (product && products.length > 0) {
-      const id = Number(product);
-      openCreate(products.some((p) => p.productId === id) ? id : '');
-      const rest = new URLSearchParams(searchParams);
-      rest.delete('product');
-      setSearchParams(rest, { replace: true });
-    }
-  }, [searchParams, products]);
+    if (!productParam || !loaded) return;
+    const id = Number(productParam);
+    openCreate(products.some((p) => p.productId === id) ? id : '');
+    const rest = new URLSearchParams(searchParams);
+    rest.delete('product');
+    setSearchParams(rest, { replace: true });
+  }, [productParam, loaded]);
 
   function updateField(name, value) {
     const next = { ...form, [name]: value };
@@ -143,8 +149,23 @@ export default function Requests() {
     });
   }
 
-  function openDecline(request) {
-    setDeclining(request);
+  // sales order: approving creates the real order and takes the stock
+  async function approveOrder(request) {
+    setActionError('');
+    await guard(async () => {
+      try {
+        const updated = await api.put(`/order-requests/${request.orderRequestId}/decision`, { decision: 'Approved' });
+        toast(`Sales order request #${request.orderRequestId} approved: it is now order #${updated.orderId}.`);
+        loadAll();
+      } catch (err) {
+        setActionError(err.message); // e.g. "Not enough stock" if it sold out since the request
+        loadAll();
+      }
+    });
+  }
+
+  function openDecline(declineInfo) {
+    setDeclining(declineInfo);
     setReason('');
     setReasonError('');
   }
@@ -159,8 +180,9 @@ export default function Requests() {
     }
     await guard(async () => {
       try {
-        await api.put(`/purchase-requests/${declining.requestId}/decision`, { decision: 'Declined', note: reason });
-        toast(`Request #${declining.requestId} declined.`);
+        const path = declining.kind === 'order' ? 'order-requests' : 'purchase-requests';
+        await api.put(`/${path}/${declining.id}/decision`, { decision: 'Declined', note: reason });
+        toast(`${declining.kind === 'order' ? 'Sales order request' : 'Request'} #${declining.id} declined.`);
         setDeclining(null);
         loadAll();
       } catch (err) {
@@ -171,16 +193,19 @@ export default function Requests() {
 
   const pending = requests.filter((r) => r.status === 'Pending');
   const visible = showAll ? requests : pending;
+  const pendingOrders = orderRequests.filter((r) => r.status === 'Pending');
+  const visibleOrders = showAll ? orderRequests : pendingOrders;
+  const waitingCount = pending.length + pendingOrders.length;
   const chosen = products.find((p) => p.productId === Number(form.productId));
 
   return (
     <>
       <PageHeader
-        title="Purchase requests"
+        title="Requests"
         description={
           canApprove
-            ? `${pending.length} waiting for approval · as a ${user.role}, your own requests are approved right away`
-            : `${pending.length} waiting for approval · a Manager approves or declines each request`
+            ? `${waitingCount} waiting for your approval · as a ${user.role}, your own requests are approved right away`
+            : `${waitingCount} waiting for approval · a Manager approves or declines each request`
         }
       >
         <button type="button" className="btn btn-primary" onClick={() => openCreate()}>
@@ -190,23 +215,104 @@ export default function Requests() {
 
       <Message>{loadError || actionError}</Message>
 
-      <section className="card card-flush">
+      {/* one filter for both lists: what is waiting, or everything */}
+      <div className="requests-toolbar">
+        <div className="segmented" role="group" aria-label="Filter requests">
+          <button type="button" aria-pressed={!showAll} onClick={() => setSearchParams({}, { replace: true })}>
+            Waiting <span className="count">{waitingCount}</span>
+          </button>
+          <button type="button" aria-pressed={showAll} onClick={() => setSearchParams({ show: 'all' }, { replace: true })}>
+            All <span className="count">{requests.length + orderRequests.length}</span>
+          </button>
+        </div>
+      </div>
+
+      <section className="card card-flush" aria-labelledby="sales-title">
         <div className="card-header card-header-pad">
-          <h2>{showAll ? 'All requests' : 'Waiting for approval'}</h2>
-          <div className="segmented" role="group" aria-label="Filter requests">
-            <button type="button" aria-pressed={!showAll} onClick={() => setSearchParams({}, { replace: true })}>
-              Waiting <span className="count">{pending.length}</span>
-            </button>
-            <button type="button" aria-pressed={showAll} onClick={() => setSearchParams({ show: 'all' }, { replace: true })}>
-              All <span className="count">{requests.length}</span>
-            </button>
-          </div>
+          <h2 id="sales-title">{showAll ? 'Sales orders from Staff' : 'Sales orders waiting for approval'}</h2>
+        </div>
+        {!loaded ? (
+          <p className="empty" role="status">Loading sales orders...</p>
+        ) : visibleOrders.length === 0 ? (
+          <p className="empty">{showAll ? 'No sales orders from Staff yet.' : 'No sales orders are waiting.'}</p>
+        ) : (
+          <table className="responsive">
+            <thead>
+              <tr>
+                <th>Products</th>
+                <th className="num">Estimated total</th>
+                <th>Requested by</th>
+                <th>Status</th>
+                <th><span className="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleOrders.map((r) => (
+                <tr key={r.orderRequestId} className={declining && declining.kind === 'order' && declining.id === r.orderRequestId ? 'selected' : ''}>
+                  <td>
+                    {r.items.map((i) => (
+                      <div key={i.productId} className="cell-title">
+                        {i.quantity} × {i.productName}
+                        {r.status === 'Pending' && i.quantity > i.inStock && (
+                          <span className="summary-warning">Only {i.inStock} in stock now</span>
+                        )}
+                      </div>
+                    ))}
+                    <div className="cell-sub">Sales order request #{r.orderRequestId}</div>
+                  </td>
+                  <td className="num" data-label="Estimated total">{money(r.estimatedTotal)}</td>
+                  <td data-label="Requested by">
+                    <div>{r.requestedBy}</div>
+                    <div className="cell-sub">{displayDate(r.createdAt)}</div>
+                  </td>
+                  <td data-label="Status">
+                    <div>
+                      <StatusBadge status={r.status} />
+                      {r.status === 'Approved' && <div className="decision-note">order #{r.orderId} · by {r.decidedBy}</div>}
+                      {r.status === 'Declined' && (
+                        <div className="decision-note">“{r.decisionNote}” · by {r.decidedBy}</div>
+                      )}
+                    </div>
+                  </td>
+                  <td>
+                    {canApprove && r.status === 'Pending' && (
+                      <div className="actions">
+                        <button type="button" className="btn btn-small btn-primary" onClick={() => approveOrder(r)} disabled={saving}>
+                          <Check size={14} aria-hidden="true" /> Approve<span className="sr-only"> sales order request {r.orderRequestId}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-small"
+                          disabled={saving}
+                          onClick={() =>
+                            openDecline({
+                              kind: 'order',
+                              id: r.orderRequestId,
+                              summary: `${r.items.map((i) => `${i.quantity} × ${i.productName}`).join(', ')} (${money(r.estimatedTotal)}), requested by ${r.requestedBy}.`,
+                            })
+                          }
+                        >
+                          <X size={14} aria-hidden="true" /> Decline<span className="sr-only"> sales order request {r.orderRequestId}</span>
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="card card-flush" aria-labelledby="purchase-title">
+        <div className="card-header card-header-pad">
+          <h2 id="purchase-title">{showAll ? 'Purchase requests' : 'Purchase requests waiting for approval'}</h2>
         </div>
         {!loaded ? (
           <p className="empty" role="status">Loading requests...</p>
         ) : visible.length === 0 ? (
           <p className="empty">
-            {showAll ? 'No requests yet.' : 'Nothing is waiting for approval.'}
+            {showAll ? 'No purchase requests yet.' : 'No purchase requests are waiting.'}
           </p>
         ) : (
           <table className="responsive">
@@ -222,7 +328,7 @@ export default function Requests() {
             </thead>
             <tbody>
               {visible.map((r) => (
-                <tr key={r.requestId} className={declining && declining.requestId === r.requestId ? 'selected' : ''}>
+                <tr key={r.requestId} className={declining && declining.kind === 'purchase' && declining.id === r.requestId ? 'selected' : ''}>
                   <td>
                     <div className="cell-title">{r.productName}</div>
                     <div className="cell-sub">
@@ -253,7 +359,18 @@ export default function Requests() {
                         <button type="button" className="btn btn-small btn-primary" onClick={() => approve(r)} disabled={saving}>
                           <Check size={14} aria-hidden="true" /> Approve<span className="sr-only"> request {r.requestId}</span>
                         </button>
-                        <button type="button" className="btn btn-small" onClick={() => openDecline(r)} disabled={saving}>
+                        <button
+                          type="button"
+                          className="btn btn-small"
+                          disabled={saving}
+                          onClick={() =>
+                            openDecline({
+                              kind: 'purchase',
+                              id: r.requestId,
+                              summary: `${r.quantity} × ${r.productName} from ${r.supplierName}, requested by ${r.requestedBy}.`,
+                            })
+                          }
+                        >
                           <X size={14} aria-hidden="true" /> Decline<span className="sr-only"> request {r.requestId}</span>
                         </button>
                       </div>
@@ -328,11 +445,12 @@ export default function Requests() {
       )}
 
       {declining && (
-        <Drawer title={`Decline request #${declining.requestId}`} onClose={() => setDeclining(null)}>
+        <Drawer
+          title={`Decline ${declining.kind === 'order' ? 'sales order request' : 'request'} #${declining.id}`}
+          onClose={() => setDeclining(null)}
+        >
           <form onSubmit={confirmDecline} noValidate aria-label="Decline request" className="drawer-form">
-            <p className="muted">
-              {declining.quantity} × {declining.productName} from {declining.supplierName}, requested by {declining.requestedBy}.
-            </p>
+            <p className="muted">{declining.summary}</p>
             <Field id="reason" label="Reason" required error={reasonError} hint="The person who asked will see this.">
               {(props) => (
                 <textarea
