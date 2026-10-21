@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const createApp = require('../../src/app');
 const orderModel = require('../../src/models/orderModel');
 const { StockError } = require('../../src/utils/stock');
+const auditLogModel = require('../../src/models/auditLogModel');
 
 jest.mock('../../src/models/orderModel');
 jest.mock('../../src/models/auditLogModel');
@@ -19,11 +20,12 @@ beforeAll(() => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  auditLogModel.logEvent.mockResolvedValue();
 });
 
 describe('orders (reqs 2.4.3, 2.5.3)', () => {
   // API-04
-  test('API-04 POST /api/orders returns 201 and the stock goes down by 5', async () => {
+  test('API-04 POST /api/orders as Manager returns 201 and the stock goes down by 5', async () => {
     orderModel.createOrder.mockResolvedValue({
       orderId: 100,
       totalAmount: 249.95,
@@ -32,14 +34,25 @@ describe('orders (reqs 2.4.3, 2.5.3)', () => {
 
     const res = await request(app)
       .post('/api/orders')
-      .set('Authorization', `Bearer ${tokenFor(3, 'Staff')}`)
+      .set('Authorization', `Bearer ${tokenFor(2, 'Manager')}`)
       .send({ items: [{ productId: 1, quantity: 5 }] });
 
     expect(res.status).toBe(201);
     expect(res.body.orderId).toBe(100);
     expect(res.body.items[0].newStock).toBe(70);
     // the user comes from the token
-    expect(orderModel.createOrder).toHaveBeenCalledWith(3, [{ productId: 1, quantity: 5 }]);
+    expect(orderModel.createOrder).toHaveBeenCalledWith(2, [{ productId: 1, quantity: 5 }]);
+  });
+
+  test('Staff cannot place an order directly: 403, logged, nothing saved (client change to 2.5.3)', async () => {
+    const res = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${tokenFor(3, 'Staff')}`)
+      .send({ items: [{ productId: 1, quantity: 5 }] });
+
+    expect(res.status).toBe(403);
+    expect(orderModel.createOrder).not.toHaveBeenCalled();
+    expect(auditLogModel.logEvent).toHaveBeenCalledWith(expect.objectContaining({ action: 'ACCESS_DENIED', userId: 3 }));
   });
 
   test('not enough stock returns 409 and the reason', async () => {
@@ -49,7 +62,7 @@ describe('orders (reqs 2.4.3, 2.5.3)', () => {
 
     const res = await request(app)
       .post('/api/orders')
-      .set('Authorization', `Bearer ${tokenFor(3, 'Staff')}`)
+      .set('Authorization', `Bearer ${tokenFor(2, 'Manager')}`)
       .send({ items: [{ productId: 1, quantity: 5 }] });
 
     expect(res.status).toBe(409);
@@ -59,7 +72,7 @@ describe('orders (reqs 2.4.3, 2.5.3)', () => {
   test('an empty order returns 400', async () => {
     const res = await request(app)
       .post('/api/orders')
-      .set('Authorization', `Bearer ${tokenFor(3, 'Staff')}`)
+      .set('Authorization', `Bearer ${tokenFor(2, 'Manager')}`)
       .send({ items: [] });
 
     expect(res.status).toBe(400);
