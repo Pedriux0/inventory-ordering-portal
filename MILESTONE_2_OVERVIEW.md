@@ -33,6 +33,8 @@ All of these need a valid JWT.
 | `GET /api/suppliers`, `GET /api/suppliers/:id` | any role | 2.2.5 |
 | `POST /api/suppliers` | Manager, Admin | 2.5.6, **API-15** |
 | `PUT /api/suppliers/:id`, `PUT /api/suppliers/:id/status` | Manager, Admin | 2.5.6 |
+| `GET /api/purchase-requests` (`?status=Pending`), `POST /api/purchase-requests` | any role | 2.2.5, **API-17** |
+| `PUT /api/purchase-requests/:id/decision` | Manager, Admin | 2.2.5, **API-18** |
 
 The request bodies use the column names in camelCase, for example `{ supplierName, contactEmail, contactPhone }` and `{ productId, supplierId, quantity, dateReceived }`. The test plan writes them in shorthand (`{ name, contact }`, `{ productId, qty, date }`).
 
@@ -80,7 +82,7 @@ An order body is `{ items: [{ productId, quantity }, ...] }`, because req 2.4.3 
 | 2.5.3 Staff process sales orders | Done (API + UI) |
 | 2.5.4 Staff view current inventory | Done (API + UI) |
 | 2.5.6 Manager manages suppliers | Done (Manager + Admin) |
-| 2.2.5 Manager supplier access | Supplier part done. **"Inventory approval" isn't built**: the proposal doesn't define it and has no test for it |
+| 2.2.5 Manager supplier access + inventory approval | Done. Inventory approval = **purchase requests**: Staff request, and a Manager or Admin approves or declines (a decline needs a reason). Managers' and Admins' own requests are approved straight away. Approving doesn't change stock. |
 | 3.4.1 Concurrent users without data loss | Transactions + row locks, with a real-database test |
 | 3.4.2 Relational database | Done, **UT-09** against real MariaDB |
 
@@ -88,9 +90,9 @@ An order body is `{ items: [{ productId, quantity }, ...] }`, because req 2.4.3 
 
 | Suite | Count | How |
 |---|---|---|
-| `npm test` | 90 tests in 13 suites (38 from Milestone 1 + 52 new) | Jest + Supertest, models mocked |
-| `npm run test:db` | 6 tests | Real MariaDB: UT-09, receipt +25, order −10, rollback on oversell, two simultaneous orders, deactivated supplier refused |
-| `client: npm run test:e2e` | 10 tests | Cypress in a real browser: FE-01, 02, 03, 04, 05, 10, 11, plus validation, oversell and Staff read-only checks |
+| `npm test` | 107 tests in 15 suites (includes 17 for purchase requests) | Jest + Supertest, models mocked |
+| `npm run test:db` | 11 tests (includes purchase requests and two managers deciding at once) | Real MariaDB: UT-09, receipt +25, order −10, rollback on oversell, two simultaneous orders, deactivated supplier refused |
+| `client: npm run test:e2e` | 20 tests (includes FE-16, FE-17 and the UX regression tests) | Cypress in a real browser: FE-01, 02, 03, 04, 05, 10, 11, plus validation, oversell and Staff read-only checks |
 
 | Test ID | Where |
 |---|---|
@@ -129,6 +131,6 @@ An order body is `{ items: [{ productId, quantity }, ...] }`, because req 2.4.3 
 ## 8. Not built yet
 
 - Search, sort and pagination for products and orders: Week 7 (2.6.1–2.6.4, API-05, 11, 12).
-- Manager "inventory approval" (2.2.5): not defined in the proposal. Needs a decision on what it means.
+- Linking an approved request to the receipt when the delivery arrives (decided: later).
 - Profile and user-admin screens: the API exists from Milestone 1, but the React pages don't yet (FE-06, 09, 14, 15).
 - The "set new password" endpoint that uses a reset token, and sending reset emails.

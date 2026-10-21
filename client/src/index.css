@@ -198,6 +198,7 @@ div.actions { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-conte
 .badge-low { background: var(--low-bg); color: var(--low-text); }
 .badge-critical { background: var(--critical-bg); color: var(--critical-text); }
 .badge-muted { background: var(--neutral-bg); color: var(--neutral-text); }
+.badge-success { background: var(--success-bg); color: var(--success-text); }
 
 .muted { color: var(--text-muted); }
 .small { font-size: 0.8rem; }
@@ -518,6 +519,14 @@ a.btn { text-decoration: none; }
 /* card header inside a flush (table) card gets the card padding back */
 .card-header-pad { padding: var(--space-5) var(--space-5) var(--space-3); }
 .card-header-pad h2 { margin: 0; }
+
+/* manager's "waiting for your approval" banner on the dashboard */
+.approval-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap;
+  border-left: 4px solid var(--low-text);
+}
+.approval-banner p { margin: 0; font-weight: 600; display: flex; align-items: center; gap: var(--space-2); }
+.decision-note { color: var(--text-muted); font-size: 0.8rem; margin-top: 2px; }
 
 /* summary line asking for more than the stock */
 .summary-warning { color: var(--critical-text); font-size: 0.8rem; font-weight: 500; display: block; }

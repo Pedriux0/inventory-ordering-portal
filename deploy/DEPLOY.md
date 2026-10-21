@@ -38,6 +38,7 @@ git clone https://github.com/Pedriux0/inventory-ordering-portal.git /var/www/inv
 cd /var/www/inventory-portal
 npm ci --omit=dev
 cp .env.example .env    # fill in DB_PASSWORD and a NEW JWT_SECRET (never reuse the dev one)
+                        # and set HOST=127.0.0.1 so the API is only reachable through NGINX
 chmod 600 .env
 
 cd client && npm ci && npm run build && cd ..
@@ -80,6 +81,13 @@ mysql -u root -p inventory_portal -e \
 After that, the Admin creates the other accounts through `POST /api/users`.
 
 ## Updating later
+
+If the new version adds tables, run its migration once before restarting. For example, purchase requests need:
+
+```bash
+mysql inventory_portal < db/migrations/001_purchase_requests.sql
+```
+
 
 ```bash
 cd /var/www/inventory-portal && git pull

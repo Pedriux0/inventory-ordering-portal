@@ -52,3 +52,18 @@ export function orderLineErrors(line, product) {
 }
 
 export const hasErrors = (errors) => Object.keys(errors).length > 0;
+
+// purchase request (req 2.2.5): product, supplier, quantity 1+, optional short note
+export function requestErrors(form) {
+  const errors = {};
+  if (!form.productId) errors.productId = 'Choose a product';
+  if (!form.supplierId) errors.supplierId = 'Choose a supplier';
+  if (!isWhole(form.quantity) || Number(form.quantity) < 1) errors.quantity = 'Enter a whole number, 1 or more';
+  if (form.note.length > 255) errors.note = 'Keep the note under 255 characters';
+  return errors;
+}
+
+// declining a request needs a reason, so the person who asked knows why
+export function declineErrors(reason) {
+  return reason.trim() ? {} : { reason: 'Write a reason, so the person who asked knows why' };
+}

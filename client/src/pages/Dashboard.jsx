@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, CircleCheck, PackagePlus, Plus, ShoppingCart } from 'lucide-react'
+import { ArrowRight, CircleCheck, ClipboardCheck, Clock, PackagePlus, Plus, ShoppingCart } from 'lucide-react'
 import { api, displayDate, money, plural } from '../api'
 import { useAuth } from '../auth'
 import { Message, PageHeader, StockBadge, StockBar } from '../components/ui'
@@ -11,14 +11,19 @@ import { Message, PageHeader, StockBadge, StockBar } from '../components/ui'
 // - stock shown as bars (length is the quickest thing to compare), no pies or gauges
 // - every number is a link to the list behind it, plus quick actions for the common jobs
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, canManageSuppliers: canApprove } = useAuth(); // Managers and Admins approve requests
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
     // the three lists are independent, so we load them at the same time
-    Promise.all([api.get('/inventory'), api.get('/orders'), api.get('/suppliers')])
-      .then(([inventory, orders, suppliers]) => setData({ inventory, orders, suppliers }))
+    Promise.all([
+      api.get('/inventory'),
+      api.get('/orders'),
+      api.get('/suppliers'),
+      api.get('/purchase-requests?status=Pending'),
+    ])
+      .then(([inventory, orders, suppliers, pendingRequests]) => setData({ inventory, orders, suppliers, pendingRequests }))
       .catch((err) => setError(err.message));
   }, []);
 
@@ -74,6 +79,19 @@ export default function Dashboard() {
         </Link>
       </div>
 
+      {/* managers see what is waiting for their approval (req 2.2.5) */}
+      {canApprove && data.pendingRequests.length > 0 && (
+        <section className="card approval-banner" aria-label="Requests waiting for approval">
+          <p>
+            <Clock size={18} aria-hidden="true" />
+            {plural(data.pendingRequests.length, 'purchase request')} waiting for your approval
+          </p>
+          <Link className="btn btn-small" to="/requests">
+            <ClipboardCheck size={14} aria-hidden="true" /> Review
+          </Link>
+        </section>
+      )}
+
       <div className="dashboard-grid">
         <section className="card card-flush" aria-labelledby="attention-title">
           <div className="card-header card-header-pad">
@@ -98,9 +116,16 @@ export default function Dashboard() {
                       {item.currentStock} in stock · reorder at {item.reorderLevel}
                     </span>
                   </div>
-                  <Link className="btn btn-small" to={`/inventory?receive=${item.productId}`}>
-                    <PackagePlus size={14} aria-hidden="true" /> Receive<span className="sr-only"> {item.productName}</span>
-                  </Link>
+                  <div className="actions">
+                    {/* ask for more (Staff) or order it (Manager, approved right away) */}
+                    <Link className="btn btn-small" to={`/requests?product=${item.productId}`}>
+                      <ClipboardCheck size={14} aria-hidden="true" /> {canApprove ? 'Order' : 'Request'}
+                      <span className="sr-only"> {item.productName}</span>
+                    </Link>
+                    <Link className="btn btn-small" to={`/inventory?receive=${item.productId}`}>
+                      <PackagePlus size={14} aria-hidden="true" /> Receive<span className="sr-only"> {item.productName}</span>
+                    </Link>
+                  </div>
                 </li>
               ))}
             </ul>

@@ -7,6 +7,7 @@ import Products from './pages/Products'
 import Inventory from './pages/Inventory'
 import Orders from './pages/Orders'
 import Suppliers from './pages/Suppliers'
+import Requests from './pages/Requests'
 
 // pages behind the login: if there is no user, go to /login first
 function RequireLogin({ children }) {
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="/orders" element={<Orders />} />
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/suppliers" element={<Suppliers />} />
+        <Route path="/requests" element={<Requests />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -147,6 +147,17 @@ Legend: ✅ works well · ⚠️ partly · ❌ missing · 🐞 **failing (a defe
 | Card layouts and accessibility retests beyond what's done here | **Weeks 9 and 11** |
 | Product movement history; reversing a receipt or voiding an order; stock count with a reason; supplier-per-product with suggested reorder; low-stock email; CSV export; barcode scanning | **New requirements.** They need API and/or ERD changes, so they'd have to be proposed first. |
 
+### Added after the evaluation: inventory approval (req 2.2.5)
+
+The client defined inventory approval as **purchase requests**, which are part of Milestone 2, so they're in scope. The redesign's Requests page uses the same patterns as the rest of the redesign:
+- the side panel with the product picker;
+- errors next to each field;
+- double-click protection and toasts;
+- a status badge with an icon (Pending, Approved or Declined);
+- a decline panel that requires a reason.
+
+The Manager's dashboard shows a "waiting for your approval" banner, and every "Needs attention" product has a **Request** button (**Order** for Managers). axe-core: 0 violations on the page, its panels and the dashboard banner, in light, dark and phone views.
+
 ## 9. Sources
 
 - Nielsen Norman Group: [10 Usability Heuristics for User Interface Design](https://www.nngroup.com/articles/ten-usability-heuristics/), and [10 Usability Heuristics Applied to Complex Applications](https://www.nngroup.com/articles/usability-heuristics-complex-applications/)

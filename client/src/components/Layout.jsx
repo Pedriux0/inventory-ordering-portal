@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, LogOut, Package, ShoppingCart, Truck, Warehouse } from 'lucide-react'
+import { ClipboardCheck, LayoutDashboard, LogOut, Package, ShoppingCart, Truck, Warehouse } from 'lucide-react'
 import { useAuth } from '../auth'
 import { ThemeToggle } from './ui'
 
@@ -38,6 +38,7 @@ export default function Layout() {
 
         <p className="nav-section">Management</p>
         <NavLink to="/suppliers"><Truck size={ICON_SIZE} aria-hidden="true" /> Suppliers</NavLink>
+        <NavLink to="/requests"><ClipboardCheck size={ICON_SIZE} aria-hidden="true" /> Requests</NavLink>
 
         <div className="nav-bottom">
           <p className="nav-section">Account</p>
