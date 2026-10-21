@@ -128,9 +128,12 @@ describe('admin account management (reqs 2.2.6, 2.3.4, 2.5.7)', () => {
     expect(userModel.createUser).not.toHaveBeenCalled();
   });
 
-  test('POST /api/users creates an account for an Admin token', async () => {
+  // UT-07 (reqs 2.2.1, 2.2.2)
+  test('UT-07 POST /api/users creates an account with all its fields (Admin token)', async () => {
     userModel.emailExists.mockResolvedValue(false);
-    userModel.createUser.mockResolvedValue(fakeUserRow({ user_id: 99, email: 'new@company.com' }));
+    userModel.createUser.mockResolvedValue(
+      fakeUserRow({ user_id: 99, full_name: 'New Guy', email: 'new@company.com', role: 'Staff' })
+    );
 
     const res = await request(app)
       .post('/api/users')
@@ -138,7 +141,11 @@ describe('admin account management (reqs 2.2.6, 2.3.4, 2.5.7)', () => {
       .send({ fullName: 'New Guy', email: 'new@company.com', password: NEW_PASSWORD, role: 'Staff' });
 
     expect(res.status).toBe(201);
-    expect(res.body.userId).toBe(99);
+    // the account object has userId, fullName, email and role, and never the password hash
+    expect(res.body).toEqual(
+      expect.objectContaining({ userId: 99, fullName: 'New Guy', email: 'new@company.com', role: 'Staff' })
+    );
+    expect(JSON.stringify(res.body)).not.toContain('password');
   });
 
   // API-06 (reqs 2.2.3, 2.5.7)

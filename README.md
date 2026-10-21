@@ -1,5 +1,7 @@
 # Inventory Ordering Portal
 
+[![Automated tests](https://github.com/Pedriux0/inventory-ordering-portal/actions/workflows/tests.yml/badge.svg?branch=milestone-2-approvals)](https://github.com/Pedriux0/inventory-ordering-portal/actions/workflows/tests.yml) · [what each test covers](docs/TESTS.md)
+
 Inventory and ordering portal with three roles: Staff, Manager and Admin. The frontend is React (Vite), and the backend uses Express 5, MySQL/MariaDB, bcrypt and JWT.
 
 **Current version: v2.0.0 (Milestone 2: products, inventory receipts, orders, suppliers and the React frontend)**

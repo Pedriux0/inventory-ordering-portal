@@ -1,0 +1,114 @@
+# Automated tests (proposal section 4: "automated-first approach")
+# runs on GitHub's servers on every push to the client branch, and can be started by hand
+# from the Actions tab ("Run workflow"). Three jobs, each one a separate green/red result:
+#   1. backend tests   - Jest + Supertest, models mocked     (UT-.., API-..)
+#   2. database tests  - against a real, fresh MariaDB       (UT-09, stock, approvals, concurrency)
+#   3. browser tests   - Cypress clicking through the app    (FE-..), with a video of every test
+name: Automated tests
+
+on:
+  push:
+    branches: [milestone-2-approvals]
+  pull_request:
+  workflow_dispatch:
+
+# test-only values: a throwaway database that exists only during the run, never the real server
+env:
+  DB_HOST: 127.0.0.1
+  DB_PORT: 3306
+  DB_USER: root
+  DB_PASSWORD: ci_root_password
+  DB_NAME: inventory_portal
+  JWT_SECRET: ci-only-secret-not-used-anywhere-else
+
+jobs:
+  backend:
+    name: 1. Backend tests (Jest + Supertest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run unit and API tests
+        run: npx jest --verbose
+
+  database:
+    name: 2. Database tests (real MariaDB)
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: ci_root_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create the database from db/schema.sql
+        run: mysql -h 127.0.0.1 -u root -p"$DB_PASSWORD" < db/schema.sql
+      - name: Run real-database tests
+        run: npm run test:db -- --verbose
+
+  browser:
+    name: 3. Browser tests (Cypress)
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: ci_root_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create the database and the demo data
+        run: |
+          mysql -h 127.0.0.1 -u root -p"$DB_PASSWORD" < db/schema.sql
+          npm run seed
+      - name: Start the API
+        run: |
+          nohup node src/server.js > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3000/api/health && exit 0; sleep 1; done
+          cat api.log; exit 1
+      - name: Run Cypress (starts the website, records videos)
+        uses: cypress-io/github-action@v6
+        with:
+          working-directory: client
+          start: npx vite --port 5173
+          wait-on: http://localhost:5173
+          config: video=true
+      - name: Save the test videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-videos
+          path: client/cypress/videos
+          if-no-files-found: ignore
+      - name: Save screenshots and the API log (only when something failed)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-details
+          path: |
+            client/cypress/screenshots
+            api.log
+          if-no-files-found: ignore
