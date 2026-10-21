@@ -14,7 +14,13 @@ describe('suppliers (reqs 2.2.5, 2.4.4, 2.5.6)', () => {
     cy.get('[role=status]').should('contain', `Supplier "${name}" created.`);
     cy.contains('tr', name).should('contain', 'orders@globalparts.com').and('contain', 'Active');
 
-    // and deactivate it again
+    // deactivate, then undo it from the message
+    cy.contains('tr', name).contains('button', 'Deactivate').click();
+    cy.contains('tr', name).should('contain', 'Inactive');
+    cy.get('[role=status]').contains('button', 'Undo').click();
+    cy.contains('tr', name).should('not.contain', 'Inactive');
+
+    // and deactivate it for good, so test runs dont pile up active suppliers
     cy.contains('tr', name).contains('button', 'Deactivate').click();
     cy.contains('tr', name).should('contain', 'Inactive');
   });

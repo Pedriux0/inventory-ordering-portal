@@ -65,3 +65,6 @@ export function today() {
   now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
   return now.toISOString().slice(0, 10);
 }
+
+// "1 unit", "4 units"
+export const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;

@@ -1,17 +1,30 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Plus, ShoppingCart, Trash2 } from 'lucide-react'
 import { api, money, shortDate } from '../api'
-import { Message, PageHeader } from '../components/ui'
+import Drawer from '../components/Drawer'
+import ProductPicker from '../components/ProductPicker'
+import { useToast } from '../components/Toast'
+import { Field, Message, PageHeader, focusFirstError } from '../components/ui'
+import { hasErrors, orderLineErrors } from '../validation'
 
-const EMPTY_LINE = { productId: '', quantity: '1' };
+let nextLineKey = 1;
+const newLine = () => ({ key: nextLineKey++, productId: '', quantity: '1' });
 
-// orders page: process a sales order (FE-04, req 2.5.3) + order history (mockup 6)
+// orders page: a point-of-sale style order builder (FE-04, req 2.5.3) + order history (mockup 6)
+// docs/UI_RESEARCH.md section C: searchable product picker, stock + price on every option,
+// a warning while typing if you ask for more than is in stock, and an order summary to check
+// before placing the order. The server still checks stock again inside a transaction.
 export default function Orders() {
+  const toast = useToast();
   const [products, setProducts] = useState([]);
   const [orders, setOrders] = useState([]);
-  const [lines, setLines] = useState([EMPTY_LINE]);
-  const [confirmed, setConfirmed] = useState(null); // the last order that went through
-  const [selected, setSelected] = useState(null); // order opened in the details panel
-  const [error, setError] = useState('');
+  const [lines, setLines] = useState(() => [newLine()]);
+  const [submitted, setSubmitted] = useState(false); // show "choose a product" only after a try
+  const [serverError, setServerError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [selected, setSelected] = useState(null); // order opened in the side panel
+  const [placing, setPlacing] = useState(false);
+  const formRef = useRef(null);
 
   async function loadAll() {
     try {
@@ -19,7 +32,7 @@ export default function Orders() {
       setProducts(productList);
       setOrders(orderList);
     } catch (err) {
-      setError(err.message);
+      setLoadError(err.message);
     }
   }
 
@@ -27,33 +40,57 @@ export default function Orders() {
     loadAll();
   }, []);
 
+  const productById = (id) => products.find((p) => p.productId === Number(id));
+
+  // errors for every line, worked out on each render from the current values
+  const lineErrors = lines.map((line) => orderLineErrors(line, productById(line.productId)));
+
+  // what to actually show: quantity problems right away (e.g. "Only 23 in stock"),
+  // a missing product only after the user tried to place the order
+  function shownError(index, field) {
+    const error = lineErrors[index][field];
+    if (!error) return undefined;
+    if (field === 'quantity' && lines[index].quantity !== '') return error;
+    return submitted ? error : undefined;
+  }
+
   function updateLine(index, field, value) {
     setLines(lines.map((line, i) => (i === index ? { ...line, [field]: value } : line)));
+    setServerError('');
   }
 
   function removeLine(index) {
     setLines(lines.filter((_, i) => i !== index));
   }
 
-  // running total shown before submitting, the server calculates the real one
-  const estimatedTotal = lines.reduce((sum, line) => {
-    const product = products.find((p) => p.productId === Number(line.productId));
-    return product ? sum + product.unitPrice * Number(line.quantity || 0) : sum;
-  }, 0);
+  const summaryLines = lines
+    .map((line) => ({ line, product: productById(line.productId), qty: Number(line.quantity) || 0 }))
+    .filter((row) => row.product && row.qty > 0);
+  const total = summaryLines.reduce((sum, row) => sum + Math.round(row.product.unitPrice * 100) * row.qty, 0) / 100;
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setError('');
-    setConfirmed(null);
+    setSubmitted(true);
+    setServerError('');
+    if (lineErrors.some(hasErrors)) {
+      setTimeout(() => focusFirstError(formRef.current));
+      return;
+    }
+
+    setPlacing(true);
     try {
       const order = await api.post('/orders', {
         items: lines.map((line) => ({ productId: Number(line.productId), quantity: Number(line.quantity) })),
       });
-      setConfirmed(order);
-      setLines([EMPTY_LINE]);
+      toast(`Order #${order.orderId} confirmed, total ${money(order.totalAmount)}.`);
+      setLines([newLine()]);
+      setSubmitted(false);
       loadAll();
     } catch (err) {
-      setError(err.message); // e.g. "Wireless Mouse M200: Not enough stock: 3 available, 5 requested"
+      // e.g. someone else just sold the last units: "Wireless Mouse M200: Not enough stock..."
+      setServerError(err.message);
+    } finally {
+      setPlacing(false);
     }
   }
 
@@ -61,97 +98,100 @@ export default function Orders() {
     try {
       setSelected(await api.get(`/orders/${orderId}`));
     } catch (err) {
-      setError(err.message);
+      setLoadError(err.message);
     }
   }
 
   return (
     <>
-      <PageHeader title="Orders" description="Place a sales order and look back at past orders." />
+      <PageHeader title="Orders" description="Build a sales order, check the summary, then place it." />
+      <Message>{loadError}</Message>
 
-      <form className="card form" onSubmit={handleSubmit} aria-label="New sales order">
-        <h2>New sales order</h2>
-        <Message>{error}</Message>
-        {confirmed && (
-          <Message type="success">
-            Order #{confirmed.orderId} confirmed, total {money(confirmed.totalAmount)}.
-          </Message>
-        )}
+      <div className="orders-layout">
+        <form ref={formRef} id="order-form" className="card" onSubmit={handleSubmit} noValidate aria-label="New sales order">
+          <h2>New sales order</h2>
+          <Message>{serverError}</Message>
 
-        {lines.map((line, index) => (
-          <div className="form-row order-line" key={index}>
-            <div>
-              <label htmlFor={`product-${index}`}>Product</label>
-              <select
-                id={`product-${index}`}
-                name="productId"
-                value={line.productId}
-                onChange={(e) => updateLine(index, 'productId', e.target.value)}
-                required
-              >
-                <option value="">Choose a product</option>
-                {products.map((p) => (
-                  <option key={p.productId} value={p.productId}>
-                    {p.productName} ({p.currentStock} in stock, {money(p.unitPrice)})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor={`quantity-${index}`}>Quantity</label>
-              <input
-                id={`quantity-${index}`}
-                name="quantity"
-                type="number"
-                min="1"
-                step="1"
-                value={line.quantity}
-                onChange={(e) => updateLine(index, 'quantity', e.target.value)}
-                required
-              />
-            </div>
-            {lines.length > 1 && (
-              <button type="button" className="btn btn-small" onClick={() => removeLine(index)}>
-                Remove<span className="sr-only"> line {index + 1}</span>
-              </button>
-            )}
-          </div>
-        ))}
+          {lines.map((line, index) => {
+            const product = productById(line.productId);
+            // a product can only be in the order once, so other lines' products are left out
+            const takenElsewhere = lines.filter((_, i) => i !== index).map((l) => Number(l.productId));
+            const choices = products.filter((p) => !takenElsewhere.includes(p.productId));
+            return (
+              <div className="order-line" key={line.key}>
+                <Field id={`product-${index}`} label={`Product ${lines.length > 1 ? index + 1 : ''}`.trim()} error={shownError(index, 'productId')}>
+                  {(props) => (
+                    <ProductPicker {...props} products={choices} value={line.productId} onChange={(id) => updateLine(index, 'productId', id)} />
+                  )}
+                </Field>
+                <Field id={`quantity-${index}`} label="Quantity" error={shownError(index, 'quantity')}>
+                  {(props) => (
+                    <input
+                      {...props}
+                      type="number"
+                      inputMode="numeric"
+                      min="1"
+                      max={product ? product.currentStock : undefined}
+                      step="1"
+                      value={line.quantity}
+                      onChange={(e) => updateLine(index, 'quantity', e.target.value)}
+                    />
+                  )}
+                </Field>
+                <div className="line-total">
+                  <span className="line-total-label">Subtotal</span>
+                  {product ? money(product.unitPrice * (Number(line.quantity) || 0)) : '—'}
+                </div>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => removeLine(index)}
+                  disabled={lines.length === 1}
+                  aria-label={`Remove line ${index + 1}`}
+                  title="Remove line"
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                </button>
+              </div>
+            );
+          })}
 
-        <div className="form-actions">
-          <button type="button" className="btn" onClick={() => setLines([...lines, EMPTY_LINE])}>
-            + Add product
+          <button type="button" className="btn" onClick={() => setLines([...lines, newLine()])}>
+            <Plus size={16} aria-hidden="true" /> Add product
           </button>
-          <span className="order-total">Estimated total: <strong>{money(estimatedTotal)}</strong></span>
-          <button type="submit" className="btn btn-primary">Place order</button>
-        </div>
-      </form>
+        </form>
 
-      {selected && (
-        <section className="card">
-          <div className="card-header">
-            <h2>Order #{selected.orderId}</h2>
-            <button type="button" className="btn btn-small" onClick={() => setSelected(null)}>Close</button>
-          </div>
-          <p className="muted">{shortDate(selected.orderDate)} · by {selected.createdBy}</p>
-          <table>
-            <thead>
-              <tr><th>Product</th><th className="num">Qty</th><th className="num">Unit price</th><th className="num">Line total</th></tr>
-            </thead>
-            <tbody>
-              {selected.items.map((item) => (
-                <tr key={item.productId}>
-                  <td className="cell-title">{item.productName}</td>
-                  <td className="num">{item.quantity}</td>
-                  <td className="num">{money(item.unitPrice)}</td>
-                  <td className="num">{money(item.unitPrice * item.quantity)}</td>
-                </tr>
+        {/* order summary stays in view while the lines are edited */}
+        <aside className="card order-summary" aria-labelledby="summary-title">
+          <h2 id="summary-title">Order summary</h2>
+          {summaryLines.length === 0 ? (
+            <p className="muted small">Choose a product to start the order.</p>
+          ) : (
+            <ul className="summary-lines">
+              {summaryLines.map(({ line, product, qty }) => (
+                <li key={line.key}>
+                  <span>
+                    {product.productName}
+                    <span className="cell-sub"> {qty} × {money(product.unitPrice)}</span>
+                    {qty > product.currentStock && (
+                      <span className="summary-warning">Only {product.currentStock} in stock</span>
+                    )}
+                  </span>
+                  <span className="num">{money(product.unitPrice * qty)}</span>
+                </li>
               ))}
-            </tbody>
-          </table>
-          <p className="order-total">Total: <strong>{money(selected.totalAmount)}</strong></p>
-        </section>
-      )}
+            </ul>
+          )}
+          <div className="summary-total">
+            <span>Total</span>
+            <strong>{money(total)}</strong>
+          </div>
+          <button type="submit" form="order-form" className="btn btn-primary btn-block" disabled={placing}>
+            <ShoppingCart size={18} aria-hidden="true" /> {placing ? 'Placing order...' : 'Place order'}
+          </button>
+          <p className="hint">Stock is checked again when the order is placed.</p>
+        </aside>
+      </div>
 
       <section className="card card-flush">
         <h2>Order history</h2>
@@ -167,7 +207,7 @@ export default function Orders() {
             </thead>
             <tbody>
               {orders.map((order) => (
-                <tr key={order.orderId}>
+                <tr key={order.orderId} className={selected && selected.orderId === order.orderId ? 'selected' : ''}>
                   <td className="cell-title">#{order.orderId}</td>
                   <td>{shortDate(order.orderDate)}</td>
                   <td className="num">{order.lineCount}</td>
@@ -187,6 +227,27 @@ export default function Orders() {
           </table>
         )}
       </section>
+
+      {selected && (
+        <Drawer title={`Order #${selected.orderId}`} onClose={() => setSelected(null)}>
+          <p className="muted">{shortDate(selected.orderDate)} · by {selected.createdBy}</p>
+          <ul className="summary-lines">
+            {selected.items.map((item) => (
+              <li key={item.productId}>
+                <span>
+                  {item.productName}
+                  <span className="cell-sub"> {item.quantity} × {money(item.unitPrice)}</span>
+                </span>
+                <span className="num">{money(item.unitPrice * item.quantity)}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="summary-total">
+            <span>Total</span>
+            <strong>{money(selected.totalAmount)}</strong>
+          </div>
+        </Drawer>
+      )}
     </>
   );
 }

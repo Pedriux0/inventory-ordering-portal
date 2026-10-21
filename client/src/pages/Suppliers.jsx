@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Pencil, Plus, Power } from 'lucide-react'
 import { api } from '../api'
 import { useAuth } from '../auth'
-import { Pencil, Plus, Power } from 'lucide-react'
-import { Message, PageHeader } from '../components/ui'
+import Drawer from '../components/Drawer'
+import { useToast } from '../components/Toast'
+import { Field, Message, PageHeader, focusFirstError } from '../components/ui'
+import { hasErrors, supplierErrors } from '../validation'
 
 const EMPTY_FORM = { supplierName: '', contactEmail: '', contactPhone: '' };
 
@@ -11,17 +14,21 @@ const EMPTY_FORM = { supplierName: '', contactEmail: '', contactPhone: '' };
 // (hiding buttons is just for a clean screen, the api is what really blocks Staff with a 403)
 export default function Suppliers() {
   const { canManageSuppliers } = useAuth();
+  const toast = useToast();
   const [suppliers, setSuppliers] = useState([]);
-  const [form, setForm] = useState(null);
-  const [editingId, setEditingId] = useState(null);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [editing, setEditing] = useState(null); // null = closed, 'new' or a supplier
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [errors, setErrors] = useState({});
+  const [serverError, setServerError] = useState('');
+  const formRef = useRef(null);
 
   async function loadSuppliers() {
     try {
       setSuppliers(await api.get('/suppliers'));
     } catch (err) {
-      setError(err.message);
+      setLoadError(err.message);
     }
   }
 
@@ -30,7 +37,7 @@ export default function Suppliers() {
   }, []);
 
   function openForm(supplier) {
-    setEditingId(supplier ? supplier.supplierId : null);
+    setEditing(supplier || 'new');
     setForm(
       supplier
         ? {
@@ -40,85 +47,85 @@ export default function Suppliers() {
           }
         : EMPTY_FORM
     );
-    setError('');
-    setSuccess('');
+    setErrors({});
+    setServerError('');
   }
 
   function updateField(event) {
-    setForm({ ...form, [event.target.name]: event.target.value });
+    const { name, value } = event.target;
+    setForm({ ...form, [name]: value });
+    if (errors[name]) setErrors(supplierErrors({ ...form, [name]: value }));
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setError('');
+    const found = supplierErrors(form);
+    setErrors(found);
+    setServerError('');
+    if (hasErrors(found)) {
+      setTimeout(() => focusFirstError(formRef.current));
+      return;
+    }
+
     try {
-      if (editingId) {
-        await api.put(`/suppliers/${editingId}`, form);
-        setSuccess(`Supplier "${form.supplierName}" updated.`);
-      } else {
+      if (editing === 'new') {
         await api.post('/suppliers', form);
-        setSuccess(`Supplier "${form.supplierName}" created.`);
+        toast(`Supplier "${form.supplierName.trim()}" created.`);
+      } else {
+        await api.put(`/suppliers/${editing.supplierId}`, form);
+        toast(`Supplier "${form.supplierName.trim()}" updated.`);
       }
-      setForm(null);
+      setEditing(null);
       loadSuppliers();
     } catch (err) {
-      setError(err.message);
+      setServerError(err.message);
     }
   }
 
+  async function setActive(supplier, active) {
+    await api.put(`/suppliers/${supplier.supplierId}/status`, { active });
+    loadSuppliers();
+  }
+
+  // deactivating is the risky action, so instead of an "are you sure?" box
+  // it happens right away with an Undo button (faster, and nothing is lost)
   async function toggleActive(supplier) {
-    setError('');
-    setSuccess('');
+    setActionError('');
     try {
-      await api.put(`/suppliers/${supplier.supplierId}/status`, { active: !supplier.isActive });
-      setSuccess(`Supplier "${supplier.supplierName}" ${supplier.isActive ? 'deactivated' : 'reactivated'}.`);
-      loadSuppliers();
+      if (supplier.isActive) {
+        await setActive(supplier, false);
+        toast(`Supplier "${supplier.supplierName}" deactivated.`, {
+          action: { label: 'Undo', onClick: () => setActive(supplier, true).catch((err) => setActionError(err.message)) },
+        });
+      } else {
+        await setActive(supplier, true);
+        toast(`Supplier "${supplier.supplierName}" reactivated.`);
+      }
     } catch (err) {
-      setError(err.message);
+      setActionError(err.message);
     }
   }
+
+  const activeCount = suppliers.filter((s) => s.isActive).length;
 
   return (
     <>
-      <PageHeader title="Suppliers" description="Companies that deliver your stock.">
-        {canManageSuppliers && !form && (
+      <PageHeader
+        title="Suppliers"
+        description={
+          canManageSuppliers
+            ? `${activeCount} active suppliers`
+            : `${activeCount} active suppliers · only Managers and Admins can change them`
+        }
+      >
+        {canManageSuppliers && (
           <button type="button" className="btn btn-primary" onClick={() => openForm(null)}>
             <Plus size={18} aria-hidden="true" /> New supplier
           </button>
         )}
       </PageHeader>
 
-      {!canManageSuppliers && (
-        <p className="muted">You can view suppliers. Only Managers and Admins can change them.</p>
-      )}
-      <Message type="success">{success}</Message>
-      {!form && <Message>{error}</Message>}
-
-      {form && (
-        <form className="card form" onSubmit={handleSubmit} aria-label="Supplier form">
-          <h2>{editingId ? 'Edit supplier' : 'Create new supplier'}</h2>
-          <Message>{error}</Message>
-
-          <label htmlFor="supplierName">Supplier name <span className="required">*</span></label>
-          <input id="supplierName" name="supplierName" value={form.supplierName} onChange={updateField} maxLength={128} />
-
-          <div className="form-row">
-            <div>
-              <label htmlFor="contactEmail">Contact email</label>
-              <input id="contactEmail" name="contactEmail" type="email" value={form.contactEmail} onChange={updateField} />
-            </div>
-            <div>
-              <label htmlFor="contactPhone">Contact phone</label>
-              <input id="contactPhone" name="contactPhone" type="tel" value={form.contactPhone} onChange={updateField} maxLength={20} />
-            </div>
-          </div>
-
-          <div className="form-actions">
-            <button type="submit" className="btn btn-primary">{editingId ? 'Save changes' : 'Create supplier'}</button>
-            <button type="button" className="btn" onClick={() => setForm(null)}>Cancel</button>
-          </div>
-        </form>
-      )}
+      <Message>{loadError || actionError}</Message>
 
       <section className="card card-flush">
         <table>
@@ -130,7 +137,7 @@ export default function Suppliers() {
           </thead>
           <tbody>
             {suppliers.map((s) => (
-              <tr key={s.supplierId} className={s.isActive ? '' : 'inactive'}>
+              <tr key={s.supplierId} className={[s.isActive ? '' : 'inactive', editing && editing.supplierId === s.supplierId ? 'selected' : ''].join(' ').trim()}>
                 <td>
                   <div className="cell-title">{s.supplierName}</div>
                   <div className="cell-sub">#{s.supplierId}</div>
@@ -148,7 +155,8 @@ export default function Suppliers() {
                         <Pencil size={14} aria-hidden="true" /> Edit<span className="sr-only"> {s.supplierName}</span>
                       </button>
                       <button type="button" className="btn btn-small" onClick={() => toggleActive(s)}>
-                        <Power size={14} aria-hidden="true" /> {s.isActive ? 'Deactivate' : 'Reactivate'}<span className="sr-only"> {s.supplierName}</span>
+                        <Power size={14} aria-hidden="true" /> {s.isActive ? 'Deactivate' : 'Reactivate'}
+                        <span className="sr-only"> {s.supplierName}</span>
                       </button>
                     </div>
                   </td>
@@ -157,8 +165,33 @@ export default function Suppliers() {
             ))}
           </tbody>
         </table>
-        {suppliers.length === 0 && <p className="empty">No suppliers yet.{canManageSuppliers && ' Add your first one with “New supplier”.'}</p>}
+        {suppliers.length === 0 && !loadError && (
+          <p className="empty">No suppliers yet.{canManageSuppliers && ' Add your first one with “New supplier”.'}</p>
+        )}
       </section>
+
+      {editing && (
+        <Drawer title={editing === 'new' ? 'New supplier' : `Edit ${editing.supplierName}`} onClose={() => setEditing(null)}>
+          <form ref={formRef} onSubmit={handleSubmit} noValidate aria-label="Supplier form" className="drawer-form">
+            <Message>{serverError}</Message>
+
+            <Field id="supplierName" label="Supplier name" required error={errors.supplierName}>
+              {(props) => <input {...props} value={form.supplierName} onChange={updateField} maxLength={128} />}
+            </Field>
+            <Field id="contactEmail" label="Contact email" error={errors.contactEmail}>
+              {(props) => <input {...props} type="email" autoComplete="off" value={form.contactEmail} onChange={updateField} />}
+            </Field>
+            <Field id="contactPhone" label="Contact phone" error={errors.contactPhone}>
+              {(props) => <input {...props} type="tel" value={form.contactPhone} onChange={updateField} maxLength={20} />}
+            </Field>
+
+            <div className="drawer-footer">
+              <button type="button" className="btn" onClick={() => setEditing(null)}>Cancel</button>
+              <button type="submit" className="btn btn-primary">{editing === 'new' ? 'Create supplier' : 'Save changes'}</button>
+            </div>
+          </form>
+        </Drawer>
+      )}
     </>
   );
 }

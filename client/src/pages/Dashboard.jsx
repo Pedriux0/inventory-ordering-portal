@@ -1,89 +1,136 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, money, shortDate } from '../api'
-import { Message, PageHeader, StatCard, StockBadge } from '../components/ui'
+import { ArrowRight, CircleCheck, PackagePlus, Plus, ShoppingCart } from 'lucide-react'
+import { api, money, plural, shortDate, today } from '../api'
+import { useAuth } from '../auth'
+import { Message, PageHeader, StockBadge, StockBar } from '../components/ui'
 
-// dashboard (mockup 2): summary numbers, low stock alerts, recent orders
+// dashboard (mockup 2), rebuilt around one question: "what needs my attention now?"
+// docs/UI_RESEARCH.md section D:
+// - NN/G operational dashboards: the problems come first, readable at a glance
+// - stock shown as bars (length is the quickest thing to compare), no pies or gauges
+// - every number is a link to the list behind it, plus quick actions for the common jobs
 export default function Dashboard() {
+  const { user } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
     // the three lists are independent, so we load them at the same time
-    Promise.all([api.get('/inventory'), api.get('/orders'), api.get('/suppliers')])
-      .then(([inventory, orders, suppliers]) => setData({ inventory, orders, suppliers }))
+    Promise.all([api.get('/inventory'), api.get('/orders'), api.get('/products')])
+      .then(([inventory, orders, products]) => setData({ inventory, orders, products }))
       .catch((err) => setError(err.message));
   }, []);
 
-  if (error) return <Message>{error}</Message>;
-  if (!data) return <p>Loading...</p>;
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const firstName = user.fullName.split(' ')[0];
+  const dateText = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-  const lowStock = data.inventory.filter((item) => item.lowStock);
-  const activeSuppliers = data.suppliers.filter((s) => s.isActive);
+  const header = (
+    <PageHeader title={`${greeting}, ${firstName}`} description={dateText}>
+      {/* quick actions: one primary (the most common job), the rest secondary */}
+      <div className="header-actions">
+        <Link className="btn" to="/inventory?receive=1"><PackagePlus size={18} aria-hidden="true" /> Receive stock</Link>
+        <Link className="btn" to="/products?new=1"><Plus size={18} aria-hidden="true" /> New product</Link>
+        <Link className="btn btn-primary" to="/orders"><ShoppingCart size={18} aria-hidden="true" /> New order</Link>
+      </div>
+    </PageHeader>
+  );
+
+  if (error) return <>{header}<Message>{error}</Message></>;
+  if (!data) return <>{header}<p className="muted">Loading...</p></>;
+
+  // most urgent first: lowest stock compared with its reorder level (the api already sorts like this)
+  const needsAttention = data.inventory.filter((item) => item.lowStock);
+  const todays = data.orders.filter((order) => shortDate(order.orderDate) === today());
+  const salesToday = todays.reduce((sum, order) => sum + order.totalAmount, 0);
+  const stockValue = data.products.reduce((sum, p) => sum + p.unitPrice * p.currentStock, 0);
 
   return (
     <>
-      <PageHeader title="Dashboard" description="What needs your attention today." />
+      {header}
 
-      <div className="stats">
-        <StatCard label="Total products" value={data.inventory.length} />
-        <StatCard label="Orders" value={data.orders.length} />
-        <StatCard label="Low stock items" value={lowStock.length} />
-        <StatCard label="Active suppliers" value={activeSuppliers.length} />
+      <div className="kpis">
+        <Link to="/inventory?filter=low" className={`card kpi ${needsAttention.length ? 'kpi-alert' : ''}`}>
+          <span className="kpi-label">Need reordering</span>
+          <span className="kpi-value">{needsAttention.length}</span>
+          <span className="kpi-note">of {plural(data.inventory.length, 'product')}</span>
+        </Link>
+        <Link to="/orders" className="card kpi">
+          <span className="kpi-label">Orders today</span>
+          <span className="kpi-value">{todays.length}</span>
+          <span className="kpi-note">{data.orders.length} in total</span>
+        </Link>
+        <Link to="/orders" className="card kpi">
+          <span className="kpi-label">Sales today</span>
+          <span className="kpi-value">{money(salesToday)}</span>
+          <span className="kpi-note">from {plural(todays.length, 'order')}</span>
+        </Link>
+        <Link to="/products" className="card kpi">
+          <span className="kpi-label">Stock value</span>
+          <span className="kpi-value">{money(stockValue)}</span>
+          <span className="kpi-note">at current prices</span>
+        </Link>
       </div>
 
-      <section className="card card-flush">
-        <div className="card-header card-header-pad">
-          <h2>Low stock alerts</h2>
-          <Link to="/inventory">View all →</Link>
-        </div>
-        {lowStock.length === 0 ? (
-          <p className="empty">Every product is above its reorder level.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr><th>Product</th><th className="num">Stock</th><th className="num">Reorder level</th><th>Status</th></tr>
-            </thead>
-            <tbody>
-              {lowStock.map((item) => (
-                <tr key={item.productId}>
-                  <td className="cell-title">{item.productName}</td>
-                  <td className="num">{item.currentStock}</td>
-                  <td className="num">{item.reorderLevel}</td>
-                  <td><StockBadge currentStock={item.currentStock} reorderLevel={item.reorderLevel} /></td>
-                </tr>
+      <div className="dashboard-grid">
+        <section className="card card-flush" aria-labelledby="attention-title">
+          <div className="card-header card-header-pad">
+            <h2 id="attention-title">Needs attention</h2>
+            <Link to="/inventory?filter=low">View all <ArrowRight size={14} aria-hidden="true" /></Link>
+          </div>
+          {needsAttention.length === 0 ? (
+            <p className="empty all-good">
+              <CircleCheck size={20} aria-hidden="true" /> All stocked up. Every product is above its reorder level.
+            </p>
+          ) : (
+            <ul className="attention-list">
+              {needsAttention.map((item) => (
+                <li key={item.productId}>
+                  <div className="attention-main">
+                    <div className="attention-top">
+                      <span className="cell-title">{item.productName}</span>
+                      <StockBadge currentStock={item.currentStock} reorderLevel={item.reorderLevel} />
+                    </div>
+                    <StockBar currentStock={item.currentStock} reorderLevel={item.reorderLevel} />
+                    <span className="cell-sub">
+                      {item.currentStock} in stock · reorder at {item.reorderLevel}
+                    </span>
+                  </div>
+                  <Link className="btn btn-small" to={`/inventory?receive=${item.productId}`}>
+                    <PackagePlus size={14} aria-hidden="true" /> Receive<span className="sr-only"> {item.productName}</span>
+                  </Link>
+                </li>
               ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+            </ul>
+          )}
+        </section>
 
-      <section className="card card-flush">
-        <div className="card-header card-header-pad">
-          <h2>Recent orders</h2>
-          <Link to="/orders">View all →</Link>
-        </div>
-        {data.orders.length === 0 ? (
-          <p className="empty">No orders yet.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr><th>Order</th><th>Date</th><th className="num">Units</th><th className="num">Total</th><th>By</th></tr>
-            </thead>
-            <tbody>
-              {data.orders.slice(0, 5).map((order) => (
-                <tr key={order.orderId}>
-                  <td className="cell-title">#{order.orderId}</td>
-                  <td>{shortDate(order.orderDate)}</td>
-                  <td className="num">{order.unitCount}</td>
-                  <td className="num">{money(order.totalAmount)}</td>
-                  <td>{order.createdBy}</td>
-                </tr>
+        <section className="card card-flush" aria-labelledby="recent-title">
+          <div className="card-header card-header-pad">
+            <h2 id="recent-title">Recent orders</h2>
+            <Link to="/orders">View all <ArrowRight size={14} aria-hidden="true" /></Link>
+          </div>
+          {data.orders.length === 0 ? (
+            <p className="empty">No orders yet.</p>
+          ) : (
+            <ul className="recent-list">
+              {data.orders.slice(0, 6).map((order) => (
+                <li key={order.orderId}>
+                  <div>
+                    <div className="cell-title">Order #{order.orderId}</div>
+                    <div className="cell-sub">
+                      {shortDate(order.orderDate)} · {plural(order.unitCount, 'unit')} · {order.createdBy}
+                    </div>
+                  </div>
+                  <span className="num">{money(order.totalAmount)}</span>
+                </li>
               ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+            </ul>
+          )}
+        </section>
+      </div>
     </>
   );
 }

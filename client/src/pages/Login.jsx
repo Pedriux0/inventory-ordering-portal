@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Eye, EyeOff, PackageCheck, ShieldCheck, Truck } from 'lucide-react'
 import { useAuth } from '../auth'
 import { Message, ThemeToggle } from '../components/ui'
 
@@ -11,6 +12,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -29,40 +31,72 @@ export default function Login() {
   return (
     <div className="login-page">
       <ThemeToggle className="login-theme" />
-      <form className="card login-card" onSubmit={handleSubmit}>
-        <div className="brand brand-dark">
+
+      {/* left: what this tool is for (hidden on phones, the form matters more there) */}
+      <aside className="login-brand" aria-hidden="true">
+        <div className="brand">
           <span className="brand-logo">IP</span> Inventory Portal
         </div>
-        <h1>Sign in</h1>
+        <div className="login-pitch">
+          <h2>Stock, orders and suppliers in one place.</h2>
+          <ul>
+            <li><PackageCheck size={20} /> See what needs reordering at a glance</li>
+            <li><Truck size={20} /> Record deliveries from your suppliers</li>
+            <li><ShieldCheck size={20} /> Every action checked against your role</li>
+          </ul>
+        </div>
+      </aside>
 
-        <Message>{error}</Message>
+      {/* right: the form */}
+      <main className="login-main">
+        <form className="login-card" onSubmit={handleSubmit}>
+          <div className="brand brand-dark login-mobile-brand">
+            <span className="brand-logo">IP</span> Inventory Portal
+          </div>
+          <h1>Sign in</h1>
+          <p className="muted">Use the account your administrator created for you.</p>
 
-        <label htmlFor="email">Email</label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="username"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
+          <Message>{error}</Message>
 
-        <label htmlFor="password">Password</label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+          <label htmlFor="email">Email</label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="username"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
 
-        <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
-          {busy ? 'Signing in...' : 'Sign in'}
-        </button>
-      </form>
+          <label htmlFor="password">Password</label>
+          <div className="password-field">
+            <input
+              id="password"
+              name="password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+            {/* passwords are 16+ characters (req 2.1.2), so being able to check what you typed helps */}
+            <button
+              type="button"
+              className="password-toggle"
+              onClick={() => setShowPassword(!showPassword)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-pressed={showPassword}
+            >
+              {showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+            </button>
+          </div>
+
+          <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
+            {busy ? 'Signing in...' : 'Sign in'}
+          </button>
+        </form>
+      </main>
     </div>
   );
 }

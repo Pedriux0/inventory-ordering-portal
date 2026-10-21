@@ -1,17 +1,25 @@
-import { useEffect, useState } from 'react'
-import { api, money } from '../api'
+import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Pencil, Plus } from 'lucide-react'
-import { Message, PageHeader, StockBadge } from '../components/ui'
+import { api, money } from '../api'
+import Drawer from '../components/Drawer'
+import { useToast } from '../components/Toast'
+import { Field, Message, PageHeader, StockBadge, focusFirstError } from '../components/ui'
+import { hasErrors, productErrors } from '../validation'
 
 const EMPTY_FORM = { productName: '', description: '', unitPrice: '', currentStock: '', reorderLevel: '' };
 
-// products page: list + create / edit form (mockup 3, FE-03, reqs 2.4.1 and 2.5.1)
+// products page: list + create / edit in a side panel (mockup 3, FE-03, reqs 2.4.1 and 2.5.1)
 export default function Products() {
+  const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
-  const [form, setForm] = useState(null); // null = form closed
-  const [editingId, setEditingId] = useState(null); // null = creating a new product
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [editing, setEditing] = useState(null); // null = panel closed, 'new' or a product
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [errors, setErrors] = useState({});
+  const [serverError, setServerError] = useState('');
+  const formRef = useRef(null);
 
   async function loadProducts() {
     try {
@@ -21,7 +29,7 @@ export default function Products() {
       const list = await api.get('/products');
       setProducts([...list].sort((a, b) => urgency(a) - urgency(b)));
     } catch (err) {
-      setError(err.message);
+      setLoadError(err.message);
     }
   }
 
@@ -30,32 +38,51 @@ export default function Products() {
   }, []);
 
   function openCreate() {
-    setEditingId(null);
+    setEditing('new');
     setForm(EMPTY_FORM);
-    setError('');
-    setSuccess('');
+    setErrors({});
+    setServerError('');
   }
 
+  // the dashboard's "New product" quick action links here with ?new=1
+  useEffect(() => {
+    if (searchParams.get('new')) {
+      openCreate();
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams]);
+
   function openEdit(product) {
-    setEditingId(product.productId);
+    setEditing(product);
     setForm({
       productName: product.productName,
       description: product.description || '',
-      unitPrice: String(product.unitPrice),
+      unitPrice: product.unitPrice.toFixed(2),
       currentStock: String(product.currentStock),
       reorderLevel: String(product.reorderLevel),
     });
-    setError('');
-    setSuccess('');
+    setErrors({});
+    setServerError('');
   }
 
   function updateField(event) {
-    setForm({ ...form, [event.target.name]: event.target.value });
+    const { name, value } = event.target;
+    setForm({ ...form, [name]: value });
+    // a field that had an error is re-checked while typing, so the message goes away once fixed
+    if (errors[name]) setErrors(productErrors({ ...form, [name]: value }, { isNew: editing === 'new' }));
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setError('');
+    const isNew = editing === 'new';
+    const found = productErrors(form, { isNew });
+    setErrors(found);
+    setServerError('');
+    if (hasErrors(found)) {
+      // wait for react to draw the messages, then jump to the first bad field
+      setTimeout(() => focusFirstError(formRef.current));
+      return;
+    }
 
     // form inputs are always text, the api wants real numbers
     const body = {
@@ -66,69 +93,34 @@ export default function Products() {
     };
 
     try {
-      if (editingId) {
-        await api.put(`/products/${editingId}`, body);
-        setSuccess(`Product "${form.productName}" updated.`);
-      } else {
+      if (isNew) {
         await api.post('/products', { ...body, currentStock: Number(form.currentStock) });
-        setSuccess(`Product "${form.productName}" created.`);
+        toast(`Product "${form.productName.trim()}" created.`);
+      } else {
+        await api.put(`/products/${editing.productId}`, body);
+        toast(`Product "${form.productName.trim()}" updated.`);
       }
-      setForm(null);
+      setEditing(null);
       loadProducts();
     } catch (err) {
-      setError(err.message); // validation errors from the api, e.g. "Product name is required"
+      setServerError(err.message);
     }
   }
 
+  const lowCount = products.filter((p) => p.lowStock).length;
+
   return (
     <>
-      <PageHeader title="Products" description="Everything you sell, with its price and current stock.">
-        {!form && (
-          <button type="button" className="btn btn-primary" onClick={openCreate}>
-            <Plus size={18} aria-hidden="true" /> New product
-          </button>
-        )}
+      <PageHeader
+        title="Products"
+        description={`${products.length} products${lowCount ? ` · ${lowCount} need reordering` : ''}`}
+      >
+        <button type="button" className="btn btn-primary" onClick={openCreate}>
+          <Plus size={18} aria-hidden="true" /> New product
+        </button>
       </PageHeader>
 
-      <Message type="success">{success}</Message>
-      {!form && <Message>{error}</Message>}
-
-      {form && (
-        <form className="card form" onSubmit={handleSubmit} aria-label="Product form">
-          <h2>{editingId ? 'Edit product' : 'Create new product'}</h2>
-          <Message>{error}</Message>
-
-          <p className="form-section">Product information</p>
-          <label htmlFor="productName">Product name <span className="required">*</span></label>
-          <input id="productName" name="productName" value={form.productName} onChange={updateField} maxLength={128} />
-
-          <label htmlFor="description">Description</label>
-          <textarea id="description" name="description" rows={3} value={form.description} onChange={updateField} />
-
-          <p className="form-section">Pricing &amp; stock</p>
-          <div className="form-row">
-            <div>
-              <label htmlFor="unitPrice">Unit price ($) <span className="required">*</span></label>
-              <input id="unitPrice" name="unitPrice" type="number" step="0.01" min="0" value={form.unitPrice} onChange={updateField} />
-            </div>
-            <div>
-              <label htmlFor="currentStock">{editingId ? 'Current stock' : 'Initial stock'} {!editingId && <span className="required">*</span>}</label>
-              {/* stock can only be set when creating, after that it changes through receipts and orders */}
-              <input id="currentStock" name="currentStock" type="number" min="0" step="1" value={form.currentStock} onChange={updateField} disabled={!!editingId} />
-            </div>
-            <div>
-              <label htmlFor="reorderLevel">Reorder level</label>
-              <input id="reorderLevel" name="reorderLevel" type="number" min="0" step="1" value={form.reorderLevel} onChange={updateField} />
-            </div>
-          </div>
-          <p className="hint">You will be alerted when stock drops to this level.</p>
-
-          <div className="form-actions">
-            <button type="submit" className="btn btn-primary">{editingId ? 'Save changes' : 'Create product'}</button>
-            <button type="button" className="btn" onClick={() => setForm(null)}>Cancel</button>
-          </div>
-        </form>
-      )}
+      <Message>{loadError}</Message>
 
       <section className="card card-flush">
         <table>
@@ -144,7 +136,7 @@ export default function Products() {
           </thead>
           <tbody>
             {products.map((product) => (
-              <tr key={product.productId}>
+              <tr key={product.productId} className={editing && editing.productId === product.productId ? 'selected' : ''}>
                 {/* the name comes first so people can scan for it, the id is secondary (NN/G) */}
                 <td>
                   <div className="cell-title">{product.productName}</div>
@@ -168,8 +160,57 @@ export default function Products() {
             ))}
           </tbody>
         </table>
-        {products.length === 0 && <p className="empty">No products yet. Create your first one with “New product”.</p>}
+        {products.length === 0 && !loadError && (
+          <p className="empty">No products yet. Create your first one with “New product”.</p>
+        )}
       </section>
+
+      {editing && (
+        <Drawer title={editing === 'new' ? 'New product' : `Edit ${editing.productName}`} onClose={() => setEditing(null)}>
+          <form ref={formRef} onSubmit={handleSubmit} noValidate aria-label="Product form" className="drawer-form">
+            <Message>{serverError}</Message>
+
+            <p className="form-section">Product information</p>
+            <Field id="productName" label="Product name" required error={errors.productName}>
+              {(props) => <input {...props} value={form.productName} onChange={updateField} maxLength={128} />}
+            </Field>
+            <Field id="description" label="Description">
+              {(props) => <textarea {...props} rows={3} value={form.description} onChange={updateField} />}
+            </Field>
+
+            <p className="form-section">Pricing &amp; stock</p>
+            <Field id="unitPrice" label="Unit price ($)" required error={errors.unitPrice}>
+              {(props) => (
+                <input {...props} type="number" inputMode="decimal" step="0.01" min="0" value={form.unitPrice} onChange={updateField} />
+              )}
+            </Field>
+            <div className="form-row">
+              <Field
+                id="currentStock"
+                label={editing === 'new' ? 'Initial stock' : 'Current stock'}
+                required={editing === 'new'}
+                error={errors.currentStock}
+                hint={editing === 'new' ? null : 'Changes through receipts and orders'}
+              >
+                {/* stock can only be set when creating, after that it changes through receipts and orders */}
+                {(props) => (
+                  <input {...props} type="number" inputMode="numeric" min="0" step="1" value={form.currentStock} onChange={updateField} disabled={editing !== 'new'} />
+                )}
+              </Field>
+              <Field id="reorderLevel" label="Reorder level" error={errors.reorderLevel} hint="Alert when stock drops to this">
+                {(props) => (
+                  <input {...props} type="number" inputMode="numeric" min="0" step="1" value={form.reorderLevel} onChange={updateField} />
+                )}
+              </Field>
+            </div>
+
+            <div className="drawer-footer">
+              <button type="button" className="btn" onClick={() => setEditing(null)}>Cancel</button>
+              <button type="submit" className="btn btn-primary">{editing === 'new' ? 'Create product' : 'Save changes'}</button>
+            </div>
+          </form>
+        </Drawer>
+      )}
     </>
   );
 }

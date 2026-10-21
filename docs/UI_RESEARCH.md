@@ -101,13 +101,40 @@ UI changes only. **The API and database don't change**, so every test from Miles
 
 **Not in this redesign:** server-side search, sort and pagination. Those are Week 7 (reqs 2.6.1–2.6.4) and need API changes, so they get their own branch.
 
-## 4. Open questions for the user
+## 4. Status: all three phases implemented (branch `ui-redesign`)
+
+| Plan item | Where it lives |
+|---|---|
+| Design tokens, light and **dark mode** (toggle in the top bar and on the login page, remembered per browser) | `client/src/index.css`, `client/src/theme.js` |
+| Icons next to every navigation label (lucide-react) | `components/Layout.jsx` |
+| Name-first tables, right-aligned numbers, sticky headers, row hover | every page |
+| Status badges only for Low and Critical, with an icon | `StockBadge` in `components/ui.jsx` |
+| **Side panel** for create, edit, receive and order details (full screen on phones, Escape to close, focus handled) | `components/Drawer.jsx` |
+| Type-to-search **product picker** (WAI-ARIA combobox) | `components/ProductPicker.jsx` |
+| Live **"23 → 48" preview** before recording a receipt | `pages/Inventory.jsx` |
+| **"Only N in stock"** warning while typing, and a sticky **order summary** | `pages/Orders.jsx` |
+| **Toasts** for success, **Undo** for deactivating a supplier, **inline field errors** with focus on the first error | `components/Toast.jsx`, `Field` in `components/ui.jsx`, `validation.js` |
+| Dashboard: **Needs attention** first with one-click **Receive**, **stock bars**, KPI cards that link to their lists, quick actions | `pages/Dashboard.jsx` |
+| "Needs reorder" filter on the inventory page | `pages/Inventory.jsx` |
+| Empty states that say what to do next | every list |
+| New two-panel login with a show-password button | `pages/Login.jsx` |
+
+**Verification**
+- Cypress: 13 frontend tests pass. They cover FE-01–05, FE-10 and FE-11, plus the theme toggle, the dashboard's one-click Receive, the reorder filter, the over-stock warning and Undo.
+- Jest: 90 backend tests pass. No API or database changes were made.
+- **axe-core accessibility scan (WCAG 2.1 A/AA): 0 violations** on every page, in both themes, including the open drawers and a form showing errors. The scan found one problem first: white text on `#3b82f6` was only 3.7:1 contrast. It was fixed with brand and link colour tokens (`#2563eb`, 5.2:1).
+
+## 5. Decisions made
+
+1. **Icons:** `lucide-react`.
+2. **Dark mode:** included.
+3. **Drawer:** a side panel on desktop and full screen on phones.
 
 1. **Icons:** add a small icon library (`lucide-react`, about 1 KB per icon, MIT licence) or use simple inline SVGs?
 2. **Dark mode:** include a toggle now, or keep light only?
 3. **Drawer vs. separate page:** NN/G recommends a side panel for editing. On phones it would open full screen. Agree?
 
-## 5. Sources
+## 6. Sources
 
 - Nielsen Norman Group: [Data Tables: Four Major User Tasks](https://www.nngroup.com/articles/data-tables/)
 - Nielsen Norman Group: [Dashboards: Making Charts and Graphs Easier to Understand](https://www.nngroup.com/articles/dashboards-preattentive/)

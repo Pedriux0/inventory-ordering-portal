@@ -48,13 +48,59 @@ export function StockBadge({ currentStock, reorderLevel }) {
   return <span className="sr-only">In stock</span>;
 }
 
-// summary number card for the dashboard
-export function StatCard({ label, value, note }) {
+// label + input + hint + error, all wired together for screen readers
+// (docs/UI_RESEARCH.md section F: errors go right under the field, not only at the top)
+// children is a function that gets the props the input needs:
+//   <Field id="unitPrice" label="Unit price" error={errors.unitPrice}>
+//     {(props) => <input {...props} type="number" />}
+//   </Field>
+export function Field({ id, label, required, error, hint, children }) {
+  const describedBy = [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(' ') || undefined;
   return (
-    <div className="card stat">
-      <div className="stat-label">{label}</div>
-      <div className="stat-value">{value}</div>
-      {note && <div className="stat-note">{note}</div>}
+    <div className={error ? 'field field-invalid' : 'field'}>
+      <label htmlFor={id}>
+        {label}
+        {required && <span className="required" aria-hidden="true"> *</span>}
+      </label>
+      {children({
+        id,
+        name: id,
+        'aria-invalid': error ? true : undefined,
+        'aria-required': required || undefined,
+        'aria-describedby': describedBy,
+      })}
+      {hint && <p className="hint" id={`${id}-hint`}>{hint}</p>}
+      {error && (
+        <p className="field-error" id={`${id}-error`}>
+          <CircleAlert size={14} aria-hidden="true" /> {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// after a failed submit, move focus to the first field with an error
+export function focusFirstError(form) {
+  const invalid = form && form.querySelector('[aria-invalid="true"]');
+  if (invalid) invalid.focus();
+}
+
+// stock level as a bar (docs/UI_RESEARCH.md section D)
+// NN/G: length is the fastest way for people to compare amounts. The thin line marks the
+// reorder level, so you can see at a glance how close a product is to running out.
+// it is decorative (aria-hidden) because the exact numbers are always written next to it
+export function StockBar({ currentStock, reorderLevel }) {
+  const scale = Math.max(reorderLevel * 3, currentStock, 1);
+  const fill = Math.min(100, (currentStock / scale) * 100);
+  const marker = (reorderLevel / scale) * 100;
+  let level = 'ok';
+  if (currentStock <= reorderLevel / 2) level = 'critical';
+  else if (currentStock <= reorderLevel) level = 'low';
+
+  return (
+    <div className={`stockbar stockbar-${level}`} aria-hidden="true">
+      <div className="stockbar-fill" style={{ width: `${fill}%` }} />
+      {reorderLevel > 0 && <div className="stockbar-marker" style={{ left: `${marker}%` }} />}
     </div>
   );
 }
