@@ -89,13 +89,20 @@ jobs:
           nohup node src/server.js > api.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://localhost:3000/api/health && exit 0; sleep 1; done
           cat api.log; exit 1
-      - name: Run Cypress (starts the website, records videos)
+      - name: Install the website's packages
+        working-directory: client
+        run: npm ci
+      - name: Start the website
+        working-directory: client
+        run: |
+          nohup npx vite --port 5173 --host 127.0.0.1 > ../web.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:5173/ > /dev/null && exit 0; sleep 1; done
+          cat ../web.log; exit 1
+      - name: Run Cypress (records a video of every test)
         uses: cypress-io/github-action@v6
         with:
           working-directory: client
-          # 127.0.0.1 on purpose: "localhost" can mean IPv6 (::1) for vite but IPv4 for the wait check
-          start: npx vite --port 5173 --host 127.0.0.1
-          wait-on: http://127.0.0.1:5173
+          install: false
           config: video=true
         env:
           CYPRESS_BASE_URL: http://127.0.0.1:5173
@@ -114,4 +121,5 @@ jobs:
           path: |
             client/cypress/screenshots
             api.log
+            web.log
           if-no-files-found: ignore
