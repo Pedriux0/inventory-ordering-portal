@@ -146,6 +146,12 @@ input:focus, select:focus, textarea:focus, .btn:focus-visible, .sidebar a:focus-
 .message-error { background: var(--critical-bg); color: var(--critical-text); }
 .message-success { background: var(--ok-bg); color: var(--ok-text); }
 
+/* ---- purchase requests ---- */
+.decline-box { display: grid; gap: 0.3rem; min-width: 220px; }
+.decline-box input { padding: 0.4rem 0.6rem; }
+.pending-box { border-left: 4px solid var(--low-text); }
+.pending-box h2 { margin: 0; }
+
 /* ---- login ---- */
 .login-page { min-height: 100vh; display: grid; place-items: center; padding: 1rem; }
 .login-card { width: 100%; max-width: 380px; }

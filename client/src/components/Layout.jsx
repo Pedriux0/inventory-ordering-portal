@@ -33,6 +33,7 @@ export default function Layout() {
 
         <p className="nav-section">Management</p>
         <NavLink to="/suppliers">Suppliers</NavLink>
+        <NavLink to="/requests">Requests</NavLink>
 
         <p className="nav-section">Account</p>
         <button type="button" className="nav-button" onClick={handleSignOut}>

@@ -1,17 +1,24 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, money, shortDate } from '../api'
+import { useAuth } from '../auth'
 import { Message, StatCard, StockBadge } from '../components/ui'
 
 // dashboard (mockup 2): summary numbers, low stock alerts, recent orders
 export default function Dashboard() {
+  const { canManageSuppliers: canApprove } = useAuth(); // Managers and Admins approve requests
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
     // the three lists are independent, so we load them at the same time
-    Promise.all([api.get('/inventory'), api.get('/orders'), api.get('/suppliers')])
-      .then(([inventory, orders, suppliers]) => setData({ inventory, orders, suppliers }))
+    Promise.all([
+      api.get('/inventory'),
+      api.get('/orders'),
+      api.get('/suppliers'),
+      api.get('/purchase-requests?status=Pending'),
+    ])
+      .then(([inventory, orders, suppliers, pendingRequests]) => setData({ inventory, orders, suppliers, pendingRequests }))
       .catch((err) => setError(err.message));
   }, []);
 
@@ -31,6 +38,16 @@ export default function Dashboard() {
         <StatCard label="Low stock items" value={lowStock.length} />
         <StatCard label="Active suppliers" value={activeSuppliers.length} />
       </div>
+
+      {/* managers see what is waiting for their approval (req 2.2.5) */}
+      {canApprove && data.pendingRequests.length > 0 && (
+        <section className="card pending-box">
+          <div className="card-header">
+            <h2>{data.pendingRequests.length} purchase request{data.pendingRequests.length === 1 ? '' : 's'} waiting for your approval</h2>
+            <Link to="/requests">Review →</Link>
+          </div>
+        </section>
+      )}
 
       <section className="card">
         <div className="card-header">
