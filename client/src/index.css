@@ -68,7 +68,8 @@ h2 { font-size: 1.1rem; margin: 0 0 0.75rem; }
   background: #3b82f6; color: #fff; border-radius: 50%; width: 36px; height: 36px;
   display: grid; place-items: center; font-weight: 700; font-size: 0.85rem;
 }
-.content { padding: 0 2rem 2rem; max-width: 1200px; width: 100%; }
+/* content fills all the space next to the sidebar, on any screen width */
+.content { padding: 0 2rem 2rem; width: 100%; }
 
 .page-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
 
