@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Plus, ShoppingCart, Trash2 } from 'lucide-react'
-import { api, money, shortDate } from '../api'
+import { api, displayDate, money, plural } from '../api'
 import Drawer from '../components/Drawer'
 import ProductPicker from '../components/ProductPicker'
 import { useToast } from '../components/Toast'
 import { Field, Message, PageHeader, focusFirstError } from '../components/ui'
+import { useSaving } from '../hooks'
 import { hasErrors, orderLineErrors } from '../validation'
 
 let nextLineKey = 1;
@@ -23,7 +24,8 @@ export default function Orders() {
   const [serverError, setServerError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [selected, setSelected] = useState(null); // order opened in the side panel
-  const [placing, setPlacing] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [placing, guard] = useSaving(); // also blocks a double click on "Place order"
   const formRef = useRef(null);
 
   async function loadAll() {
@@ -33,12 +35,22 @@ export default function Orders() {
       setOrders(orderList);
     } catch (err) {
       setLoadError(err.message);
+    } finally {
+      setLoaded(true);
     }
   }
 
   useEffect(() => {
     loadAll();
   }, []);
+
+  // ready for the next customer: after an order, focus goes back to the first product field
+  // (before, it was lost to the top of the page - docs/UX_EVALUATION.md). An effect runs after
+  // react has drawn the fresh empty line, so the field really exists when it gets focus
+  const [readyForNext, setReadyForNext] = useState(0);
+  useEffect(() => {
+    if (readyForNext > 0) document.getElementById('product-0')?.focus();
+  }, [readyForNext]);
 
   const productById = (id) => products.find((p) => p.productId === Number(id));
 
@@ -77,21 +89,21 @@ export default function Orders() {
       return;
     }
 
-    setPlacing(true);
-    try {
-      const order = await api.post('/orders', {
-        items: lines.map((line) => ({ productId: Number(line.productId), quantity: Number(line.quantity) })),
-      });
-      toast(`Order #${order.orderId} confirmed, total ${money(order.totalAmount)}.`);
-      setLines([newLine()]);
-      setSubmitted(false);
-      loadAll();
-    } catch (err) {
-      // e.g. someone else just sold the last units: "Wireless Mouse M200: Not enough stock..."
-      setServerError(err.message);
-    } finally {
-      setPlacing(false);
-    }
+    await guard(async () => {
+      try {
+        const order = await api.post('/orders', {
+          items: lines.map((line) => ({ productId: Number(line.productId), quantity: Number(line.quantity) })),
+        });
+        toast(`Order #${order.orderId} confirmed, total ${money(order.totalAmount)}.`);
+        setLines([newLine()]);
+        setSubmitted(false);
+        loadAll();
+        setReadyForNext((n) => n + 1);
+      } catch (err) {
+        // e.g. someone else just sold the last units: "Wireless Mouse M200: Not enough stock..."
+        setServerError(err.message);
+      }
+    });
   }
 
   async function openOrder(orderId) {
@@ -195,10 +207,12 @@ export default function Orders() {
 
       <section className="card card-flush">
         <h2>Order history</h2>
-        {orders.length === 0 ? (
+        {!loaded ? (
+          <p className="empty" role="status">Loading orders...</p>
+        ) : orders.length === 0 ? (
           <p className="empty">No orders yet. Place the first one with the form above.</p>
         ) : (
-          <table>
+          <table className="responsive">
             <thead>
               <tr>
                 <th>Order</th><th>Date</th><th className="num">Products</th><th className="num">Units</th>
@@ -209,11 +223,11 @@ export default function Orders() {
               {orders.map((order) => (
                 <tr key={order.orderId} className={selected && selected.orderId === order.orderId ? 'selected' : ''}>
                   <td className="cell-title">#{order.orderId}</td>
-                  <td>{shortDate(order.orderDate)}</td>
-                  <td className="num">{order.lineCount}</td>
-                  <td className="num">{order.unitCount}</td>
-                  <td className="num">{money(order.totalAmount)}</td>
-                  <td>{order.createdBy}</td>
+                  <td data-label="Date">{displayDate(order.orderDate)}</td>
+                  <td className="num" data-label="Products">{order.lineCount}</td>
+                  <td className="num" data-label="Units">{order.unitCount}</td>
+                  <td className="num" data-label="Total">{money(order.totalAmount)}</td>
+                  <td data-label="By">{order.createdBy}</td>
                   <td>
                     <div className="actions">
                       <button type="button" className="btn btn-small" onClick={() => openOrder(order.orderId)}>
@@ -230,7 +244,9 @@ export default function Orders() {
 
       {selected && (
         <Drawer title={`Order #${selected.orderId}`} onClose={() => setSelected(null)}>
-          <p className="muted">{shortDate(selected.orderDate)} · by {selected.createdBy}</p>
+          <p className="muted">
+            {displayDate(selected.orderDate)} · {plural(selected.items.reduce((n, i) => n + i.quantity, 0), 'unit')} · by {selected.createdBy}
+          </p>
           <ul className="summary-lines">
             {selected.items.map((item) => (
               <li key={item.productId}>

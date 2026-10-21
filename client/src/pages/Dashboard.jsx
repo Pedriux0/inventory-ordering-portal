@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, CircleCheck, PackagePlus, Plus, ShoppingCart } from 'lucide-react'
-import { api, money, plural, shortDate, today } from '../api'
+import { api, displayDate, money, plural } from '../api'
 import { useAuth } from '../auth'
 import { Message, PageHeader, StockBadge, StockBar } from '../components/ui'
 
@@ -17,8 +17,8 @@ export default function Dashboard() {
 
   useEffect(() => {
     // the three lists are independent, so we load them at the same time
-    Promise.all([api.get('/inventory'), api.get('/orders'), api.get('/products')])
-      .then(([inventory, orders, products]) => setData({ inventory, orders, products }))
+    Promise.all([api.get('/inventory'), api.get('/orders'), api.get('/suppliers')])
+      .then(([inventory, orders, suppliers]) => setData({ inventory, orders, suppliers }))
       .catch((err) => setError(err.message));
   }, []);
 
@@ -43,34 +43,34 @@ export default function Dashboard() {
 
   // most urgent first: lowest stock compared with its reorder level (the api already sorts like this)
   const needsAttention = data.inventory.filter((item) => item.lowStock);
-  const todays = data.orders.filter((order) => shortDate(order.orderDate) === today());
-  const salesToday = todays.reduce((sum, order) => sum + order.totalAmount, 0);
-  const stockValue = data.products.reduce((sum, p) => sum + p.unitPrice * p.currentStock, 0);
+  const activeSuppliers = data.suppliers.filter((s) => s.isActive).length;
 
   return (
     <>
       {header}
 
+      {/* the four summary numbers from mockup 2: products, orders, low stock, suppliers
+          each card is a link to the list behind it */}
       <div className="kpis">
-        <Link to="/inventory?filter=low" className={`card kpi ${needsAttention.length ? 'kpi-alert' : ''}`}>
-          <span className="kpi-label">Need reordering</span>
-          <span className="kpi-value">{needsAttention.length}</span>
-          <span className="kpi-note">of {plural(data.inventory.length, 'product')}</span>
-        </Link>
-        <Link to="/orders" className="card kpi">
-          <span className="kpi-label">Orders today</span>
-          <span className="kpi-value">{todays.length}</span>
-          <span className="kpi-note">{data.orders.length} in total</span>
-        </Link>
-        <Link to="/orders" className="card kpi">
-          <span className="kpi-label">Sales today</span>
-          <span className="kpi-value">{money(salesToday)}</span>
-          <span className="kpi-note">from {plural(todays.length, 'order')}</span>
-        </Link>
         <Link to="/products" className="card kpi">
-          <span className="kpi-label">Stock value</span>
-          <span className="kpi-value">{money(stockValue)}</span>
-          <span className="kpi-note">at current prices</span>
+          <span className="kpi-label">Total products</span>
+          <span className="kpi-value">{data.inventory.length}</span>
+          <span className="kpi-note">in the catalog</span>
+        </Link>
+        <Link to="/orders" className="card kpi">
+          <span className="kpi-label">Orders</span>
+          <span className="kpi-value">{data.orders.length}</span>
+          <span className="kpi-note">processed so far</span>
+        </Link>
+        <Link to="/inventory?filter=low" className={`card kpi ${needsAttention.length ? 'kpi-alert' : ''}`}>
+          <span className="kpi-label">Low stock items</span>
+          <span className="kpi-value">{needsAttention.length}</span>
+          <span className="kpi-note">at or below reorder level</span>
+        </Link>
+        <Link to="/suppliers" className="card kpi">
+          <span className="kpi-label">Active suppliers</span>
+          <span className="kpi-value">{activeSuppliers}</span>
+          <span className="kpi-note">of {plural(data.suppliers.length, 'supplier')}</span>
         </Link>
       </div>
 
@@ -121,7 +121,7 @@ export default function Dashboard() {
                   <div>
                     <div className="cell-title">Order #{order.orderId}</div>
                     <div className="cell-sub">
-                      {shortDate(order.orderDate)} · {plural(order.unitCount, 'unit')} · {order.createdBy}
+                      {displayDate(order.orderDate)} · {plural(order.unitCount, 'unit')} · {order.createdBy}
                     </div>
                   </div>
                   <span className="num">{money(order.totalAmount)}</span>

@@ -68,3 +68,12 @@ export function today() {
 
 // "1 unit", "4 units"
 export const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
+// "2026-10-20" -> "Oct 20, 2026" for showing to people (docs/UX_EVALUATION.md)
+// built from the parts so the timezone can never move it to another day
+export function displayDate(value) {
+  const text = shortDate(value);
+  const [year, month, day] = text.split('-').map(Number);
+  if (!year || !month || !day) return text;
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}

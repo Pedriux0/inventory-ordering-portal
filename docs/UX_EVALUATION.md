@@ -2,6 +2,11 @@
 
 **Version evaluated:** the redesign, `v3.0.0` on branch `ui-redesign`. The submission version (`v2.1.0`) wasn't evaluated.
 
+> **Scope rule:** like the submission version, this redesign covers **only Milestone 2**: products, inventory receipts, orders and suppliers, plus the login screen they need. **It's a different design, not more features.** The backend, API and database are identical to `v2.1.0` (`git diff v2.1.0 ui-redesign -- src db tests` is empty).
+>
+> - Findings that improve a Milestone 2 screen were **fixed in this version** (section 8).
+> - Findings that need new features belong to other milestones, so they're **recorded but not built here**: Admin screens, history, reversals, search, alerts and export.
+
 ## 1. How this was done
 
 1. **What real users say:** verified reviews of popular small-business inventory tools (Sortly on G2 and Capterra, with 957 Capterra reviews; inFlow on Software Advice), discussions in the r/InventoryManagement community, and studies of warehouse staff using inventory apps.
@@ -117,20 +122,30 @@ Legend: ✅ works well · ⚠️ partly · ❌ missing · 🐞 **failing (a defe
 | 9 | Recognize and recover from errors | ✅ | Specific errors next to the field, focus on the first error |
 | 10 | Help and documentation | ⚠️ | Field hints and empty states, but no first-time guidance per role |
 
-## 8. Recommended order of work
+## 8. What was done
 
-1. **Fix the two defects now (1–2 hours):**
-   - disable submit buttons while saving;
-   - a loading state instead of the false "No products yet".
-   - Also: readable dates.
-2. **Give the Admin role its screens (about 1 day):** a Users page and a Profile/password page. The API is already done; this closes FE-06, 09, 14 and 15.
-3. **Week 7 as planned:** search, sort and pagination.
-4. **Propose two small new requirements:**
-   - product movement history;
-   - reversing a receipt / voiding an order through a counter-movement.
+### Fixed in this version (Milestone 2 screens only)
 
-   These are the two things real users most often say they miss.
-5. **Later, or as "future work" in the final report:** low-stock email, CSV export, stock count with a reason, supplier-per-product with suggested reorder, phone card layouts, barcode scanning.
+| Finding | Fix | Proof |
+|---|---|---|
+| 🐞 A double-click recorded a delivery twice. Products and suppliers had the same risk. | `useSaving()` guard (`client/src/hooks.js`) on every save button, including Place order and Deactivate/Reactivate. The button shows "Saving..." and is disabled. | Retest at 1.2 s latency: **1 receipt** (was 2). New Cypress test checks that a double-click sends exactly 1 request. |
+| 🐞 "No products yet" appeared while the list was loading | Every list (Products, Suppliers, Inventory, receipts, Orders) shows "Loading..." until the data arrives | Retest at 1.5 s latency: "Loading products..." New Cypress test. |
+| Focus was lost after placing an order | Focus returns to the first product field, ready for the next customer | Keyboard-only retest: focus ends on `product-0` (was `<body>`). New Cypress test. |
+| ISO dates `2026-10-20` | "Oct 20, 2026" everywhere dates are shown | Visual check |
+| Phone tables scrolled sideways | On phones, each table row becomes a labelled card (`table.responsive`) | Screenshots at 390 px. axe scan at phone size: 0 violations. |
+| **Scope drift:** the dashboard showed "Sales today" and "Stock value", which aren't Milestone 2 features | Back to mockup 2's four stats: total products, orders, low stock items, active suppliers | Visual check |
+
+**After the fixes:** 16 Cypress tests pass (13 + 3 regression tests), all 90 backend tests pass, and **axe-core finds 0 WCAG 2.1 AA violations** at desktop and phone size, in both themes.
+
+### Recorded for later milestones (not built in this version)
+
+| Finding | Belongs to |
+|---|---|
+| Admin screens: users, roles, deactivation. Profile and change password (FE-06, 09, 14, 15). | Milestone 1 frontend |
+| Search, sort and pagination on products and orders | **Week 7** (2.6.1–2.6.4) |
+| Audit log viewer | **Week 8** (security and logging) |
+| Card layouts and accessibility retests beyond what's done here | **Weeks 9 and 11** |
+| Product movement history; reversing a receipt or voiding an order; stock count with a reason; supplier-per-product with suggested reorder; low-stock email; CSV export; barcode scanning | **New requirements.** They need API and/or ERD changes, so they'd have to be proposed first. |
 
 ## 9. Sources
 

@@ -483,6 +483,32 @@ a.btn { text-decoration: none; }
   .toasts { right: var(--space-4); bottom: var(--space-4); }
 }
 
+/* phones: tables become one card per row instead of scrolling sideways
+   (docs/UX_EVALUATION.md, staff use phones in the stock room). Each cell shows its
+   column name from data-label; cells without a label (the name, the buttons) are the card
+   title and footer. The header row stays in the page for screen readers, just not visible */
+@media (max-width: 760px) {
+  table.responsive, table.responsive tbody, table.responsive tr, table.responsive td { display: block; width: 100%; }
+  table.responsive thead {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;
+  }
+  table.responsive tr { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border); }
+  table.responsive td {
+    display: flex; justify-content: space-between; align-items: center; gap: var(--space-3);
+    padding: 3px 0; border: 0; text-align: right;
+  }
+  table.responsive td::before {
+    content: attr(data-label); color: var(--text-muted); font-size: 0.8rem; font-weight: 500; text-align: left;
+  }
+  table.responsive td:not([data-label]) { display: block; text-align: left; }
+  table.responsive td:not([data-label])::before { content: none; }
+  table.responsive td:empty, table.responsive td:has(> .sr-only:only-child) { display: none; }
+  table.responsive tbody tr:hover td { background: none; }
+  table.responsive div.actions { justify-content: flex-start; margin-top: var(--space-2); }
+  table.responsive .stockbar { flex: 0 1 55%; }
+  th.col-bar, td.col-bar { width: 100%; }
+}
+
 /* tablets: stack the two-column layouts */
 @media (max-width: 1100px) {
   .orders-layout, .dashboard-grid { grid-template-columns: 1fr; }

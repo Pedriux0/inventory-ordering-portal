@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ArrowRight, PackagePlus } from 'lucide-react'
-import { api, shortDate, today } from '../api'
+import { api, displayDate, today } from '../api'
 import Drawer from '../components/Drawer'
 import ProductPicker from '../components/ProductPicker'
 import { useToast } from '../components/Toast'
 import { Field, Message, PageHeader, StockBadge, StockBar, focusFirstError } from '../components/ui'
+import { useSaving } from '../hooks'
 import { hasErrors, receiptErrors } from '../validation'
 
 const emptyReceipt = (productId = '') => ({ productId, supplierId: '', quantity: '', dateReceived: today() });
@@ -21,6 +22,8 @@ export default function Inventory() {
   const [receipts, setReceipts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loadError, setLoadError] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const [saving, guard] = useSaving();
   const [receiving, setReceiving] = useState(false);
   const [form, setForm] = useState(emptyReceipt());
   const [errors, setErrors] = useState({});
@@ -44,6 +47,8 @@ export default function Inventory() {
       setSuppliers(supplierList.filter((s) => s.isActive));
     } catch (err) {
       setLoadError(err.message);
+    } finally {
+      setLoaded(true);
     }
   }
 
@@ -90,20 +95,23 @@ export default function Inventory() {
       setTimeout(() => focusFirstError(formRef.current));
       return;
     }
-    try {
-      const receipt = await api.post('/inventory/receipts', {
-        productId: Number(form.productId),
-        supplierId: Number(form.supplierId),
-        quantity: Number(form.quantity),
-        dateReceived: form.dateReceived,
-      });
-      const product = products.find((p) => p.productId === receipt.productId);
-      toast(`Received ${receipt.quantity} × ${product ? product.productName : 'product'}. Stock is now ${receipt.newStock}.`);
-      setReceiving(false);
-      loadAll();
-    } catch (err) {
-      setServerError(err.message); // e.g. "Supplier is deactivated"
-    }
+    // the guard stops a double click from recording the same delivery twice
+    await guard(async () => {
+      try {
+        const receipt = await api.post('/inventory/receipts', {
+          productId: Number(form.productId),
+          supplierId: Number(form.supplierId),
+          quantity: Number(form.quantity),
+          dateReceived: form.dateReceived,
+        });
+        const product = products.find((p) => p.productId === receipt.productId);
+        toast(`Received ${receipt.quantity} × ${product ? product.productName : 'product'}. Stock is now ${receipt.newStock}.`);
+        setReceiving(false);
+        loadAll();
+      } catch (err) {
+        setServerError(err.message); // e.g. "Supplier is deactivated"
+      }
+    });
   }
 
   // live "before -> after" preview, so the change can be checked before saving
@@ -137,7 +145,7 @@ export default function Inventory() {
             </button>
           </div>
         </div>
-        <table>
+        <table className="responsive">
           <thead>
             <tr>
               <th>Product</th>
@@ -152,10 +160,10 @@ export default function Inventory() {
             {visible.map((item) => (
               <tr key={item.productId}>
                 <td className="cell-title">{item.productName}</td>
-                <td className="num" data-cy="stock">{item.currentStock}</td>
-                <td className="col-bar"><StockBar currentStock={item.currentStock} reorderLevel={item.reorderLevel} /></td>
-                <td className="num">{item.reorderLevel}</td>
-                <td><StockBadge currentStock={item.currentStock} reorderLevel={item.reorderLevel} /></td>
+                <td className="num" data-cy="stock" data-label="Stock">{item.currentStock}</td>
+                <td className="col-bar" data-label="Level"><StockBar currentStock={item.currentStock} reorderLevel={item.reorderLevel} /></td>
+                <td className="num" data-label="Reorder level">{item.reorderLevel}</td>
+                <td data-label="Status"><StockBadge currentStock={item.currentStock} reorderLevel={item.reorderLevel} /></td>
                 <td>
                   <div className="actions">
                     <button type="button" className="btn btn-small" onClick={() => openReceive(item.productId)}>
@@ -167,17 +175,20 @@ export default function Inventory() {
             ))}
           </tbody>
         </table>
-        {visible.length === 0 && !loadError && (
+        {!loaded && <p className="empty" role="status">Loading stock levels...</p>}
+        {loaded && visible.length === 0 && !loadError && (
           <p className="empty">{onlyLow ? 'Nothing needs reordering right now.' : 'No products yet.'}</p>
         )}
       </section>
 
       <section className="card card-flush">
         <h2>Recent receipts</h2>
-        {receipts.length === 0 ? (
+        {!loaded ? (
+          <p className="empty">Loading receipts...</p>
+        ) : receipts.length === 0 ? (
           <p className="empty">No receipts recorded yet. Use “Receive stock” when a delivery arrives.</p>
         ) : (
-          <table>
+          <table className="responsive">
             <thead>
               <tr><th>Date</th><th>Product</th><th>Supplier</th><th className="num">Qty</th><th>Received by</th></tr>
             </thead>
@@ -185,13 +196,13 @@ export default function Inventory() {
               {receipts.map((r) => (
                 <tr key={r.receiptId}>
                   <td>
-                    <div>{shortDate(r.dateReceived)}</div>
+                    <div>{displayDate(r.dateReceived)}</div>
                     <div className="cell-sub">Receipt #{r.receiptId}</div>
                   </td>
-                  <td className="cell-title">{r.productName}</td>
-                  <td>{r.supplierName}</td>
-                  <td className="num">+{r.quantityReceived}</td>
-                  <td>{r.receivedBy}</td>
+                  <td className="cell-title" data-label="Product">{r.productName}</td>
+                  <td data-label="Supplier">{r.supplierName}</td>
+                  <td className="num" data-label="Qty">+{r.quantityReceived}</td>
+                  <td data-label="Received by">{r.receivedBy}</td>
                 </tr>
               ))}
             </tbody>
@@ -256,7 +267,9 @@ export default function Inventory() {
 
             <div className="drawer-footer">
               <button type="button" className="btn" onClick={() => setReceiving(false)}>Cancel</button>
-              <button type="submit" className="btn btn-primary">Record receipt</button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Saving...' : 'Record receipt'}
+              </button>
             </div>
           </form>
         </Drawer>

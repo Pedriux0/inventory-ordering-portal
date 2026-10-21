@@ -5,6 +5,7 @@ import { api, money } from '../api'
 import Drawer from '../components/Drawer'
 import { useToast } from '../components/Toast'
 import { Field, Message, PageHeader, StockBadge, focusFirstError } from '../components/ui'
+import { useSaving } from '../hooks'
 import { hasErrors, productErrors } from '../validation'
 
 const EMPTY_FORM = { productName: '', description: '', unitPrice: '', currentStock: '', reorderLevel: '' };
@@ -15,6 +16,8 @@ export default function Products() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
   const [loadError, setLoadError] = useState('');
+  const [loaded, setLoaded] = useState(false); // false = still loading, never show "no products" yet
+  const [saving, guard] = useSaving();
   const [editing, setEditing] = useState(null); // null = panel closed, 'new' or a product
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
@@ -30,6 +33,8 @@ export default function Products() {
       setProducts([...list].sort((a, b) => urgency(a) - urgency(b)));
     } catch (err) {
       setLoadError(err.message);
+    } finally {
+      setLoaded(true);
     }
   }
 
@@ -92,19 +97,21 @@ export default function Products() {
       reorderLevel: form.reorderLevel === '' ? 0 : Number(form.reorderLevel),
     };
 
-    try {
-      if (isNew) {
-        await api.post('/products', { ...body, currentStock: Number(form.currentStock) });
-        toast(`Product "${form.productName.trim()}" created.`);
-      } else {
-        await api.put(`/products/${editing.productId}`, body);
-        toast(`Product "${form.productName.trim()}" updated.`);
+    await guard(async () => {
+      try {
+        if (isNew) {
+          await api.post('/products', { ...body, currentStock: Number(form.currentStock) });
+          toast(`Product "${form.productName.trim()}" created.`);
+        } else {
+          await api.put(`/products/${editing.productId}`, body);
+          toast(`Product "${form.productName.trim()}" updated.`);
+        }
+        setEditing(null);
+        loadProducts();
+      } catch (err) {
+        setServerError(err.message);
       }
-      setEditing(null);
-      loadProducts();
-    } catch (err) {
-      setServerError(err.message);
-    }
+    });
   }
 
   const lowCount = products.filter((p) => p.lowStock).length;
@@ -113,7 +120,7 @@ export default function Products() {
     <>
       <PageHeader
         title="Products"
-        description={`${products.length} products${lowCount ? ` · ${lowCount} need reordering` : ''}`}
+        description={loaded ? `${products.length} products${lowCount ? ` · ${lowCount} need reordering` : ''}` : 'Loading...'}
       >
         <button type="button" className="btn btn-primary" onClick={openCreate}>
           <Plus size={18} aria-hidden="true" /> New product
@@ -123,7 +130,7 @@ export default function Products() {
       <Message>{loadError}</Message>
 
       <section className="card card-flush">
-        <table>
+        <table className="responsive">
           <thead>
             <tr>
               <th>Product</th>
@@ -145,10 +152,10 @@ export default function Products() {
                     {product.description && ` · ${product.description}`}
                   </div>
                 </td>
-                <td className="num">{product.currentStock}</td>
-                <td className="num">{product.reorderLevel}</td>
-                <td className="num">{money(product.unitPrice)}</td>
-                <td><StockBadge currentStock={product.currentStock} reorderLevel={product.reorderLevel} /></td>
+                <td className="num" data-label="Stock">{product.currentStock}</td>
+                <td className="num" data-label="Reorder level">{product.reorderLevel}</td>
+                <td className="num" data-label="Unit price">{money(product.unitPrice)}</td>
+                <td data-label="Status"><StockBadge currentStock={product.currentStock} reorderLevel={product.reorderLevel} /></td>
                 <td>
                   <div className="actions">
                     <button type="button" className="btn btn-small" onClick={() => openEdit(product)}>
@@ -160,7 +167,8 @@ export default function Products() {
             ))}
           </tbody>
         </table>
-        {products.length === 0 && !loadError && (
+        {!loaded && <p className="empty" role="status">Loading products...</p>}
+        {loaded && products.length === 0 && !loadError && (
           <p className="empty">No products yet. Create your first one with “New product”.</p>
         )}
       </section>
@@ -206,7 +214,9 @@ export default function Products() {
 
             <div className="drawer-footer">
               <button type="button" className="btn" onClick={() => setEditing(null)}>Cancel</button>
-              <button type="submit" className="btn btn-primary">{editing === 'new' ? 'Create product' : 'Save changes'}</button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {saving ? 'Saving...' : editing === 'new' ? 'Create product' : 'Save changes'}
+              </button>
             </div>
           </form>
         </Drawer>
