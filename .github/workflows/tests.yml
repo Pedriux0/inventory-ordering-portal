@@ -103,9 +103,9 @@ jobs:
         with:
           working-directory: client
           install: false
-          config: video=true
         env:
           CYPRESS_BASE_URL: http://127.0.0.1:5173
+          CYPRESS_VIDEO: true # cypress.config.js turns video off for local runs, CI records them
       - name: Save the test videos
         if: always()
         uses: actions/upload-artifact@v4
