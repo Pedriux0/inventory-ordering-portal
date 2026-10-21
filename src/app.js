@@ -6,6 +6,7 @@ const supplierRoutes = require('./routes/suppliers');
 const productRoutes = require('./routes/products');
 const inventoryRoutes = require('./routes/inventory');
 const orderRoutes = require('./routes/orders');
+const purchaseRequestRoutes = require('./routes/purchaseRequests');
 const errorHandler = require('./middleware/errorHandler');
 
 // its a function so we can import this in tests whithout opening a real port
@@ -29,6 +30,7 @@ function createApp() {
   app.use('/api/products', productRoutes);
   app.use('/api/inventory', inventoryRoutes);
   app.use('/api/orders', orderRoutes);
+  app.use('/api/purchase-requests', purchaseRequestRoutes);
 
   // the error handler must be added after the routes so it can catch their errors
   app.use(errorHandler);
