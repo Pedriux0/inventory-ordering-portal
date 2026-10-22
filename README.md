@@ -6,6 +6,18 @@ Inventory and ordering portal with three roles: Staff, Manager and Admin. The fr
 
 **Live:** https://inventoryorderingportal.cloud · **Current version: v2.3.0** (Milestone 2, with inventory approval and Manager approval of Staff orders)
 
+## Try it live
+
+Open **https://inventoryorderingportal.cloud** and sign in with one of these demo accounts. The data is demo data only.
+
+| Role | Email | Password | Try this |
+|---|---|---|---|
+| **Staff** | `staff@demo.com` | `DemoStaffPass2026` | Create a product, record a delivery, send an order **for approval**, request products from a supplier |
+| **Manager** | `manager@demo.com` | `DemoManagerPass2026` | Open **Requests** and approve or decline Staff orders (a reason is required to decline), manage suppliers, place orders directly |
+| **Admin** | `admin@demo.com` | `DemoAdminPass2026` | Everything a Manager can do |
+
+**A good first walkthrough:** log in as **Staff** → **Orders** → add a product → *Send for approval* → sign out → log in as **Manager** → the dashboard shows the waiting request → **Requests** → *Approve* → the order appears in the order history and the stock goes down.
+
 ## Diagrams
 
 ### 1. How a request travels through the app
