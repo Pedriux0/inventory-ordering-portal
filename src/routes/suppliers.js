@@ -1,8 +1,12 @@
 const express = require('express');
+const validateId = require('../middleware/validateId');
 const supplierController = require('../controllers/supplierController');
 const { authenticate, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
+
+// :id must be a plain whole number, anything else is 404 (see middleware/validateId.js)
+router.param('id', validateId);
 
 // every route below needs a valid login first
 router.use(authenticate);

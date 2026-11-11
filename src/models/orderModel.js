@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { retryOnConflict } = require('../utils/retry');
 const { StockError, calculateStockAfterOrder } = require('../utils/stock');
 
 // all the sql for orders + order_items lives in this file (reqs 2.4.3, 2.5.3)
@@ -66,7 +67,7 @@ async function insertOrder(conn, userId, items) {
 
 // req 2.5.3, API-04: processes a sales order straight away (Managers and Admins)
 // one transaction for everything: if ANY product is short on stock, nothing is saved (rollback)
-async function createOrder(userId, items) {
+async function createOrderOnce(userId, items) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -132,6 +133,11 @@ async function findById(orderId) {
     [orderId]
   );
   return { ...orders[0], items };
+}
+
+// the whole transaction runs again if the database reports a temporary conflict (utils/retry.js)
+function createOrder(userId, items) {
+  return retryOnConflict(() => createOrderOnce(userId, items));
 }
 
 module.exports = { insertOrder, createOrder, findAll, findById };

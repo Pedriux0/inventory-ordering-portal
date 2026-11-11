@@ -1,4 +1,5 @@
 const express = require('express');
+const helmet = require('helmet');
 const healthRoutes = require('./routes/health');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
@@ -9,6 +10,7 @@ const orderRoutes = require('./routes/orders');
 const purchaseRequestRoutes = require('./routes/purchaseRequests');
 const orderRequestRoutes = require('./routes/orderRequests');
 const errorHandler = require('./middleware/errorHandler');
+const { sanitizeBody } = require('./middleware/sanitize');
 
 // its a function so we can import this in tests whithout opening a real port
 function createApp() {
@@ -20,8 +22,16 @@ function createApp() {
     app.set('trust proxy', 1);
   }
 
+  // security headers on every response (req 3.1, week 8): stops the browser from guessing
+  // content types, blocks the api from being framed, and removes "X-Powered-By: Express"
+  // so the server does not advertise what it runs on (req 3.2.4: no internal details)
+  app.use(helmet());
+
   // middlewares
-  app.use(express.json());
+  // a small body limit: the api only receives small forms, a huge body is refused (413)
+  app.use(express.json({ limit: '100kb' }));
+  // req 3.1.2: strip html/script tags from every text field before anything else sees it
+  app.use(sanitizeBody);
 
   // routes
   app.use('/api/health', healthRoutes);
@@ -33,6 +43,12 @@ function createApp() {
   app.use('/api/orders', orderRoutes);
   app.use('/api/purchase-requests', purchaseRequestRoutes);
   app.use('/api/order-requests', orderRequestRoutes);
+
+  // any other /api path: a plain JSON 404 instead of express's default html page,
+  // which would reveal the framework and the exact path handling (req 3.2.1, SEC-05)
+  app.use('/api', (req, res) => {
+    res.status(404).json({ error: 'Not found' });
+  });
 
   // the error handler must be added after the routes so it can catch their errors
   app.use(errorHandler);
