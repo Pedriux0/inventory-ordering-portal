@@ -4,3 +4,4 @@ node_modules/
 .postman/
 postman/
 security/reports/
+perf/reports/
