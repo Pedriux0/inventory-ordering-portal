@@ -1,71 +1,79 @@
 const pool = require('../config/db');
+const { retryOnConflict } = require('../utils/retry');
 const { StockError, calculateStockAfterOrder } = require('../utils/stock');
 
 // all the sql for orders + order_items lives in this file (reqs 2.4.3, 2.5.3)
 
-// req 2.5.3, API-04: processes a sales order
-// one transaction for everything: the order, its lines and every stock deduction
-// if ANY product is short on stock, nothing is saved at all (rollback)
+// saves a sales order using a connection that is ALREADY inside a transaction:
+// the order, its lines and every stock deduction. If any product is short on stock it throws,
+// and the caller rolls everything back. Used by createOrder below, and by an approved
+// order request (orderRequestModel), so both follow exactly the same stock rules.
 // "FOR UPDATE" locks each product row so two orders cant sell the same last unit (req 3.4.1)
-async function createOrder(userId, items) {
+async function insertOrder(conn, userId, items) {
+  // lock the products in id order, so two orders with the same products
+  // always lock in the same order and cant deadlock each other
+  const sortedItems = [...items].sort((a, b) => a.productId - b.productId);
+
+  const lines = [];
+  for (const item of sortedItems) {
+    const [products] = await conn.execute(
+      'SELECT product_name, unit_price, current_stock FROM products WHERE product_id = ? FOR UPDATE',
+      [item.productId]
+    );
+    if (products.length === 0) throw new StockError(`Product ${item.productId} not found`, 404);
+
+    const product = products[0];
+    let newStock;
+    try {
+      newStock = calculateStockAfterOrder(product.current_stock, item.quantity);
+    } catch (err) {
+      // add the product name so the user knows which line failed
+      throw new StockError(`${product.product_name}: ${err.message}`, err.status);
+    }
+
+    lines.push({
+      productId: item.productId,
+      productName: product.product_name,
+      quantity: item.quantity,
+      unitPrice: Number(product.unit_price), // price is copied at sale time (unit_price_at_sale)
+      newStock,
+    });
+  }
+
+  // total in cents to avoid floating point errors, then back to dollars
+  const totalCents = lines.reduce((sum, l) => sum + Math.round(l.unitPrice * 100) * l.quantity, 0);
+  const totalAmount = totalCents / 100;
+
+  const [orderResult] = await conn.execute(
+    'INSERT INTO orders (user_id, order_date, total_amount) VALUES (?, CURDATE(), ?)',
+    [userId, totalAmount]
+  );
+  const orderId = orderResult.insertId;
+
+  for (const line of lines) {
+    await conn.execute(
+      `INSERT INTO order_items (order_id, product_id, quantity_sold, unit_price_at_sale)
+       VALUES (?, ?, ?, ?)`,
+      [orderId, line.productId, line.quantity, line.unitPrice]
+    );
+    await conn.execute('UPDATE products SET current_stock = ? WHERE product_id = ?', [
+      line.newStock,
+      line.productId,
+    ]);
+  }
+
+  return { orderId, totalAmount, items: lines };
+}
+
+// req 2.5.3, API-04: processes a sales order straight away (Managers and Admins)
+// one transaction for everything: if ANY product is short on stock, nothing is saved (rollback)
+async function createOrderOnce(userId, items) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-
-    // lock the products in id order, so two orders with the same products
-    // always lock in the same order and cant deadlock each other
-    const sortedItems = [...items].sort((a, b) => a.productId - b.productId);
-
-    const lines = [];
-    for (const item of sortedItems) {
-      const [products] = await conn.execute(
-        'SELECT product_name, unit_price, current_stock FROM products WHERE product_id = ? FOR UPDATE',
-        [item.productId]
-      );
-      if (products.length === 0) throw new StockError(`Product ${item.productId} not found`, 404);
-
-      const product = products[0];
-      let newStock;
-      try {
-        newStock = calculateStockAfterOrder(product.current_stock, item.quantity);
-      } catch (err) {
-        // add the product name so the user knows which line failed
-        throw new StockError(`${product.product_name}: ${err.message}`, err.status);
-      }
-
-      lines.push({
-        productId: item.productId,
-        productName: product.product_name,
-        quantity: item.quantity,
-        unitPrice: Number(product.unit_price), // price is copied at sale time (unit_price_at_sale)
-        newStock,
-      });
-    }
-
-    // total in cents to avoid floating point errors, then back to dollars
-    const totalCents = lines.reduce((sum, l) => sum + Math.round(l.unitPrice * 100) * l.quantity, 0);
-    const totalAmount = totalCents / 100;
-
-    const [orderResult] = await conn.execute(
-      'INSERT INTO orders (user_id, order_date, total_amount) VALUES (?, CURDATE(), ?)',
-      [userId, totalAmount]
-    );
-    const orderId = orderResult.insertId;
-
-    for (const line of lines) {
-      await conn.execute(
-        `INSERT INTO order_items (order_id, product_id, quantity_sold, unit_price_at_sale)
-         VALUES (?, ?, ?, ?)`,
-        [orderId, line.productId, line.quantity, line.unitPrice]
-      );
-      await conn.execute('UPDATE products SET current_stock = ? WHERE product_id = ?', [
-        line.newStock,
-        line.productId,
-      ]);
-    }
-
+    const order = await insertOrder(conn, userId, items);
     await conn.commit();
-    return { orderId, totalAmount, items: lines };
+    return order;
   } catch (err) {
     await conn.rollback();
     throw err;
@@ -75,18 +83,36 @@ async function createOrder(userId, items) {
 }
 
 // order history, newest first, with who made it and how many units
-// (search by id/date and pagination are week 7, reqs 2.6.2 and 2.6.4)
-async function findAll() {
+// week 7: req 2.6.2 search by order id OR order date, req 2.6.4 pages
+// options: { orderId, orderDate: 'YYYY-MM-DD', limit, offset }, returns { rows, total }
+async function findAll({ orderId, orderDate, limit, offset = 0 } = {}) {
+  const where = [];
+  const values = [];
+  if (orderId) {
+    where.push('o.order_id = ?');
+    values.push(orderId);
+  }
+  if (orderDate) {
+    where.push('o.order_date = ?');
+    values.push(orderDate);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  // LIMIT/OFFSET are numbers already checked by parsePaging, so they are safe to write in
+  const pageSql = limit ? `LIMIT ${Number(limit)} OFFSET ${Number(offset)}` : '';
+
   const [rows] = await pool.execute(
     `SELECT o.order_id, o.order_date, o.total_amount, u.full_name AS created_by_name,
             COUNT(oi.order_item_id) AS line_count, COALESCE(SUM(oi.quantity_sold), 0) AS unit_count
      FROM orders o
      JOIN users u ON u.user_id = o.user_id
      LEFT JOIN order_items oi ON oi.order_id = o.order_id
+     ${whereSql}
      GROUP BY o.order_id, o.order_date, o.total_amount, u.full_name
-     ORDER BY o.order_id DESC`
+     ORDER BY o.order_id DESC ${pageSql}`,
+    values
   );
-  return rows;
+  const [count] = await pool.execute(`SELECT COUNT(*) AS total FROM orders o ${whereSql}`, values);
+  return { rows, total: Number(count[0].total) };
 }
 
 // one order with all its lines
@@ -109,4 +135,9 @@ async function findById(orderId) {
   return { ...orders[0], items };
 }
 
-module.exports = { createOrder, findAll, findById };
+// the whole transaction runs again if the database reports a temporary conflict (utils/retry.js)
+function createOrder(userId, items) {
+  return retryOnConflict(() => createOrderOnce(userId, items));
+}
+
+module.exports = { insertOrder, createOrder, findAll, findById };

@@ -1,6 +1,7 @@
 const productModel = require('../models/productModel');
 const { validateProduct } = require('../utils/validators');
 const { isLowStock } = require('../utils/stock');
+const { parsePaging, readSearch } = require('../utils/listQuery');
 
 // shape we send back for a product (req 2.4.1)
 function toPublicProduct(product) {
@@ -28,9 +29,31 @@ function cleanProductInput({ productName, description, unitPrice, currentStock, 
 }
 
 // GET /api/products  (req 2.4.1)
+// week 7: ?search= (name or id, req 2.6.1), ?sort=name|price|stock&order=asc|desc (req 2.6.3),
+// ?page=&limit= (req 2.6.4, 25 per page by default). Without page/limit every product comes back.
+// the total that match the search goes in the X-Total-Count header, for the page controls
 async function listProducts(req, res) {
-  const products = await productModel.findAll();
-  res.status(200).json(products.map(toPublicProduct));
+  const { sort = 'name', order = 'asc' } = req.query;
+  if (!['name', 'price', 'stock'].includes(sort)) {
+    return res.status(400).json({ error: 'sort must be name, price or stock' });
+  }
+  if (!['asc', 'desc'].includes(order)) {
+    return res.status(400).json({ error: 'order must be asc or desc' });
+  }
+  const paging = parsePaging(req.query);
+  if (paging.error) {
+    return res.status(400).json({ error: paging.error });
+  }
+
+  const { rows, total } = await productModel.findAll({
+    search: readSearch(req.query.search),
+    sort,
+    order,
+    limit: paging.paged ? paging.limit : undefined,
+    offset: paging.paged ? paging.offset : 0,
+  });
+  res.set('X-Total-Count', String(total));
+  res.status(200).json(rows.map(toPublicProduct));
 }
 
 // GET /api/products/:id

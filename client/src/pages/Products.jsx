@@ -1,28 +1,60 @@
 import { useEffect, useState } from 'react'
 import { api, money } from '../api'
-import { Message, StockBadge } from '../components/ui'
+import { Message, Pagination, SortHeader, StockBadge } from '../components/ui'
+import { useSaving } from '../hooks'
+
+const PAGE_SIZE = 25; // req 2.6.4
 
 const EMPTY_FORM = { productName: '', description: '', unitPrice: '', currentStock: '', reorderLevel: '' };
 
 // products page: list + create / edit form (mockup 3, FE-03, reqs 2.4.1 and 2.5.1)
+// week 7 (mockup 7): search by name or #id (2.6.1, FE-07), sort by name / price / stock
+// (2.6.3, FE-08), 25 per page (2.6.4, FE-13)
 export default function Products() {
   const [products, setProducts] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+  const [query, setQuery] = useState({ search: '', sort: 'name', order: 'asc', page: 1 });
+  const [searchInput, setSearchInput] = useState('');
+  const [saving, guard] = useSaving();
   const [form, setForm] = useState(null); // null = form closed
   const [editingId, setEditingId] = useState(null); // null = creating a new product
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  async function loadProducts() {
+  async function loadProducts(q = query) {
     try {
-      setProducts(await api.get('/products'));
+      const params = new URLSearchParams({ sort: q.sort, order: q.order, page: q.page, limit: PAGE_SIZE });
+      if (q.search) params.set('search', q.search);
+      const { items, total: count } = await api.getPage(`/products?${params}`);
+      setProducts(items);
+      setTotal(count);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoaded(true);
     }
   }
 
   useEffect(() => {
-    loadProducts();
-  }, []);
+    loadProducts(query);
+  }, [query]);
+
+  function handleSearch(event) {
+    event.preventDefault();
+    setQuery({ ...query, search: searchInput.trim(), page: 1 }); // a new search starts at page 1
+  }
+
+  function clearSearch() {
+    setSearchInput('');
+    setQuery({ ...query, search: '', page: 1 });
+  }
+
+  // clicking the column you are sorting by flips the order, a new column starts ascending
+  function handleSort(column) {
+    const order = query.sort === column && query.order === 'asc' ? 'desc' : 'asc';
+    setQuery({ ...query, sort: column, order, page: 1 });
+  }
 
   function openCreate() {
     setEditingId(null);
@@ -60,19 +92,29 @@ export default function Products() {
       reorderLevel: form.reorderLevel === '' ? 0 : Number(form.reorderLevel),
     };
 
-    try {
-      if (editingId) {
-        await api.put(`/products/${editingId}`, body);
-        setSuccess(`Product "${form.productName}" updated.`);
-      } else {
-        await api.post('/products', { ...body, currentStock: Number(form.currentStock) });
-        setSuccess(`Product "${form.productName}" created.`);
+    // the guard stops a double click from creating the same product twice
+    await guard(async () => {
+      try {
+        if (editingId) {
+          await api.put(`/products/${editingId}`, body);
+          setSuccess(`Product "${form.productName}" updated.`);
+        } else {
+          await api.post('/products', { ...body, currentStock: Number(form.currentStock) });
+          setSuccess(`Product "${form.productName}" created.`);
+          // with 25 per page the new product could be on another page: show it straight away
+          // (as a search for its name, removable with the chip like any search)
+          const name = form.productName.trim();
+          setForm(null);
+          setSearchInput(name);
+          setQuery({ ...query, search: name, page: 1 });
+          return;
+        }
+        setForm(null);
+        loadProducts();
+      } catch (err) {
+        setError(err.message); // validation errors from the api, e.g. "Product name is required"
       }
-      setForm(null);
-      loadProducts();
-    } catch (err) {
-      setError(err.message); // validation errors from the api, e.g. "Product name is required"
-    }
+    });
   }
 
   return (
@@ -120,16 +162,50 @@ export default function Products() {
           <p className="hint">You will be alerted when stock drops to this level.</p>
 
           <div className="form-actions">
-            <button type="submit" className="btn btn-primary">{editingId ? 'Save changes' : 'Create product'}</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              {saving ? 'Saving...' : editingId ? 'Save changes' : 'Create product'}
+            </button>
             <button type="button" className="btn" onClick={() => setForm(null)}>Cancel</button>
           </div>
         </form>
       )}
 
       <section className="card">
+        {/* search by name or by product id (2.6.1) */}
+        <form className="search-bar" role="search" onSubmit={handleSearch}>
+          <label htmlFor="product-search">Search products</label>
+          <div className="search-row">
+            <input
+              id="product-search"
+              type="search"
+              placeholder="Name or #id, e.g. lamp or #12"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+            <button type="submit" className="btn">Search</button>
+          </div>
+        </form>
+        {query.search && (
+          // the active filter, shown as a chip you can remove (mockup 7)
+          <p className="chips">
+            <span className="chip">
+              Search: “{query.search}”
+              <button type="button" onClick={clearSearch} aria-label={`Remove search ${query.search}`}>×</button>
+            </span>
+            <span className="muted small">{total} found</span>
+          </p>
+        )}
+
         <table>
           <thead>
-            <tr><th>ID</th><th>Product</th><th>Unit price</th><th>Stock</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr>
+            <tr>
+              <th>ID</th>
+              <SortHeader column="name" label="Product" sort={query.sort} order={query.order} onSort={handleSort} />
+              <SortHeader column="price" label="Unit price" sort={query.sort} order={query.order} onSort={handleSort} />
+              <SortHeader column="stock" label="Stock" sort={query.sort} order={query.order} onSort={handleSort} />
+              <th>Status</th>
+              <th><span className="sr-only">Actions</span></th>
+            </tr>
           </thead>
           <tbody>
             {products.map((product) => (
@@ -139,8 +215,8 @@ export default function Products() {
                   <div>{product.productName}</div>
                   {product.description && <div className="muted small">{product.description}</div>}
                 </td>
-                <td>{money(product.unitPrice)}</td>
-                <td>{product.currentStock}</td>
+                <td data-cy="price">{money(product.unitPrice)}</td>
+                <td data-cy="stock">{product.currentStock}</td>
                 <td><StockBadge currentStock={product.currentStock} reorderLevel={product.reorderLevel} /></td>
                 <td>
                   <button type="button" className="btn btn-small" onClick={() => openEdit(product)}>
@@ -151,7 +227,17 @@ export default function Products() {
             ))}
           </tbody>
         </table>
-        {products.length === 0 && <p className="muted">No products yet.</p>}
+        {!loaded && <p className="muted" role="status">Loading products...</p>}
+        {loaded && products.length === 0 && (
+          <p className="muted">{query.search ? 'No products match your search.' : 'No products yet.'}</p>
+        )}
+        <Pagination
+          page={query.page}
+          pageSize={PAGE_SIZE}
+          total={total}
+          onPage={(page) => setQuery({ ...query, page })}
+          label="Products pages"
+        />
       </section>
     </>
   );

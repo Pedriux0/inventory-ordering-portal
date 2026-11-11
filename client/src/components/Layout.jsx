@@ -3,7 +3,7 @@ import { useAuth } from '../auth'
 
 // sidebar + top bar around every logged in page (mockup 2)
 export default function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
 
   async function handleSignOut() {
@@ -33,8 +33,11 @@ export default function Layout() {
 
         <p className="nav-section">Management</p>
         <NavLink to="/suppliers">Suppliers</NavLink>
+        <NavLink to="/requests">Requests</NavLink>
+        {isAdmin && <NavLink to="/users">Users</NavLink>}
 
         <p className="nav-section">Account</p>
+        <NavLink to="/profile">Profile</NavLink>
         <button type="button" className="nav-button" onClick={handleSignOut}>
           Sign Out
         </button>

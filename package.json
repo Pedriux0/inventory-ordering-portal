@@ -1,6 +1,6 @@
 {
   "name": "inventory-managment",
-  "version": "2.0.0",
+  "version": "2.4.0",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -8,7 +8,10 @@
     "start": "node src/server.js",
     "test": "jest",
     "seed": "node db/seed.js",
-    "test:db": "jest --testRegex '\\.int\\.js$' --runInBand"
+    "test:db": "jest --testRegex '\\.int\\.js$' --runInBand",
+    "test:security": "security/zap-scan.sh",
+    "test:perf": "node perf/run-perf.js",
+    "test:a11y": "node a11y/run-a11y.mjs"
   },
   "keywords": [],
   "author": "",
@@ -18,12 +21,15 @@
     "bcrypt": "^6.0.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.24.4"
   },
   "devDependencies": {
     "jest": "^30.5.2",
+    "lighthouse": "^13.6.0",
     "nodemon": "^3.1.14",
+    "puppeteer-core": "^25.17.0",
     "supertest": "^7.2.2"
   }
 }
