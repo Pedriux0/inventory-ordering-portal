@@ -114,42 +114,67 @@ Results from the rehearsal on the meeting morning (all passed):
 
 ---
 
-## 5. Demo script (about 12 minutes)
+## 5. Demo script, step by step (about 15 minutes)
 
-**① Requirements (1 min)**
-Show the proposal tab, scroll to 2.6 and 3.1–3.4. Then switch to `docs/TESTS.md` and say: *"Every test ID from the proposal is here, with the file that tests it, and all of them pass."*
+Before she joins (5 minutes):
+- Start the ZAP attack scan in its own terminal: `source meeting-env.sh && npm run test:security`. It finishes in 3 minutes and you show the result later.
+- In GitHub, start the live check: run `gh workflow run live-check.yml --ref milestone-3`, or press **Re-run all jobs** on its last run. It's done in about 2 minutes and ready to show.
 
-**② The features, clicking through (3 min)** on http://localhost:5173:
-1. Log in as **Staff**, open **Products**:
-   - Type `lamp` and press Enter. The chip "Search: lamp · 1 found" appears; click × to remove it.
-   - Type `#4` to search by id.
-   - Click **Unit price**: lowest first. Click again: highest first.
-2. Open **Orders**:
-   - Search history by today's date (`YYYY-MM-DD`), then by an order number.
-   - Type `yesterday` to show the clear error message.
-3. Open **Profile**: change your name. The top bar updates too.
-4. Sign out and log in as **Admin**. Open **Users**: change a role, deactivate and reactivate someone. Your own row is locked, so you can't lock yourself out.
-5. Sign out and log in as **Manager**. Type `/users` in the address bar to show the **403 page**.
+**Step 1: Open with the plan (1 min)**
 
-**③ The tests running live (5 min)** in Terminal 3:
-```bash
-npm test -- --verbose            # names with IDs scroll by (SEC-04, API-05, API-12...), ends "151 passed"
-npm run test:db -- --verbose     # real database: SEC-01 injection, SEC-03 bcrypt, SEC-06/07 logs, "34 passed"
-cd client && npx cypress open    # E2E → Chrome → click search.cy.js, then a11y.cy.js; she watches it click
-cd .. && npm run test:a11y       # Tab key presses + Lighthouse scores (accessibility 100)
-npm run test:perf                # 20 users for 60 s, then 10 orders at once: "5 of 5 checks passed"
-```
-Start `npm run test:security` (ZAP, 3 min) **first**, in a 4th terminal, so it finishes while you show the rest. Then show its last lines: `High: 0 … PASS`.
+> *"Milestone 3 was weeks 7 to 9: search, sort and pages; security and logging; accessibility and performance. I'll show you the requirements, the features working, the tests running, the tests on GitHub, the tests on the live site, and then the code."*
 
-**④ Automated on every push (1 min)**
-Open the GitHub Actions run and show the six green jobs. Scroll down to **Artifacts** and open one Cypress video.
+**Step 2: Requirements (1 min).** Proposal tab: scroll through 2.6.1–2.6.4 and 3.1.1–3.4.2. Then `docs/TESTS.md`:
 
-**⑤ Live site (30 s)**
-Open https://inventoryorderingportal.cloud: v2.4.0 is live with search and paging.
+> *"Every test ID from the proposal is listed here with the file that tests it. All of them pass, and all of them are automated."*
 
-**⑥ Code walkthrough** (section 6), as long as she wants.
+**Step 3: The features, clicking (3 min).** Local site, http://localhost:5173:
+1. **Staff → Products**:
+   - Type `lamp`, press Enter. Point at the chip "Search: lamp · 1 found" and remove it with ×.
+   - Type `#4` (search by id).
+   - Click **Unit price** twice: lowest first, then highest first.
+   > *"The database does the search, sort and paging, 25 per page."*
+2. **Orders**:
+   - Search today's date, then `1`.
+   - Then `yesterday`: *"a clear message, not an error page."*
+3. **Profile**: change the name, and show the top bar updating. Change it back.
+4. **Admin → Users**: change a role, then deactivate and reactivate someone.
+   > *"My own row is locked so I can't lock myself out."*
+5. **Manager**: type `/users` in the address bar to get the 403 page.
+   > *"The page is hidden from their menu, and the API refuses it too. The refusal is written to the audit log."*
 
----
+**Step 4: The tests running in front of her (4 min).** Terminal 3:
+1. `npm test -- --verbose`
+   > *"151 tests in 3 seconds. Look at the names: SEC-04, API-05, API-12 are the IDs from my proposal."*
+2. `npm run test:db -- --verbose`
+   > *"These use a real database: real SQL injection attempts, bcrypt hashes checked, the failed-login and access-denied log rows checked."*
+3. `cd client && npx cypress open` → E2E → Chrome → click **search.cy.js**. She watches the browser type and click by itself.
+   > *"FE-07, FE-08, FE-12, FE-13."*
+
+   Then click **a11y.cy.js**:
+   > *"axe-core checks every page against WCAG 2.1 AA, then the text at 200%."*
+4. `cd .. && npm run test:a11y`
+   > *"Real Tab and Enter key presses, then Lighthouse: accessibility 100."*
+5. `npm run test:perf`
+   > *"20 users for a minute: no errors, and nothing lost. Then 10 orders at the same moment: the stock is exactly right."*
+6. The ZAP terminal you started before: `High: 0 … PASS`.
+   > *"OWASP ZAP sent SQL injection and XSS attacks to every endpoint; nothing High."*
+
+**Step 5: The same tests on every push (1 min).** GitHub Actions → **Automated tests**, branch `milestone-3`:
+> *"Every push runs these six jobs automatically on GitHub's servers, with a fresh database."*
+
+Open **Artifacts** → `cypress-videos` → play one video.
+
+**Step 6: The tests on the live site (1 min).** GitHub Actions → **Live site check**, the run you started before she joined:
+> *"This tests the real site, inventoryorderingportal.cloud: 34 API checks, the keyboard and Lighthouse test, and a passive OWASP ZAP scan. These are only the tests that are safe on production; the ones that create data or attack the server only run on the throwaway copy."*
+
+Then open https://inventoryorderingportal.cloud and search `lamp` there too.
+
+**Step 7: Code walkthrough (as long as she wants).** Follow section 6. Open the file, say the one-line explanation from memory, then point at the line.
+
+**Step 8: Close (30 s)**
+
+> *"All Milestone 3 requirements are met, every test case in the proposal is automated and passing, on GitHub and on the live site. Version 2.4.0 is deployed."*
 
 ## 6. Code review: what to say (rubric: *Code Review*)
 
@@ -282,6 +307,10 @@ This was found by the SEC-01 test.
 **"Is the data encrypted?"**
 
 > *"Passwords and reset tokens are hashed (one-way), which is stronger than encryption for passwords. The site is HTTPS only. Secrets are in `.env`, readable only by root."*
+
+**"Why didn't ZAP on the live site scan for injection?"**
+
+> *"The live scan is passive: it only looks. Sending attack payloads to production would fill the real database with junk, so the attack scan runs on GitHub's throwaway copy of the same code. The live scan found no High risks. Its Medium warning is that NGINX doesn't add a Content-Security-Policy header to the website pages. The API answers already have it, and adding it to NGINX is my next step."*
 
 **"Do the security and load tests run against the live site?"**
 

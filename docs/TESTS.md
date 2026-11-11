@@ -95,6 +95,20 @@ Every test ID in the proposal is automated and passes on every push.
 | PERF-01 | 20 users for 60 seconds: no errors, 99% of answers under 2 seconds, no data lost | `perf/perf-01-load.yml`, `perf/run-perf.js` | ✅ |
 | PERF-02 | 10 orders at the same moment on one product: every order is counted, stock is exactly right | `perf/perf-02-orders.yml`, `perf/run-perf.js` | ✅ |
 
+## Live site check (the real site, https://inventoryorderingportal.cloud)
+
+A second workflow, [Live site check](https://github.com/Pedriux0/inventory-ordering-portal/actions/workflows/live-check.yml), runs the tests that are **safe on production** against the deployed site. They read data and send requests the server must refuse; they never create, change or attack anything.
+
+| Job | What it checks on the live site | Result |
+|---|---|---|
+| 1. Live API checks (`live/live-check.mjs`) | Logins, search by name and #id, sort by name/price/stock, pages of 25, order search by date and number, Staff refused on admin endpoints, forged token refused, SQL text in id/search/login harmless, generic errors, security headers, speed | 34 checks |
+| 2. Live accessibility (`a11y/run-a11y.mjs`) | Real keyboard login and Tab through every page, Lighthouse accessibility ≥ 90 | 11 checks |
+| 3. Live security scan (`security/zap-live-baseline.sh`) | OWASP ZAP **baseline**: passive, looks at every answer, no attack payloads. Fails on any High | 60 rules |
+
+Start it with **Re-run all jobs** on any run of that workflow, or `gh workflow run live-check.yml --ref milestone-3`.
+
+The full Cypress suite, the ZAP attack scan and the Artillery load test are **not** run on the live site: they create data, send attacks and load a server shared with other websites. They run on GitHub's throwaway copy in the main workflow, on the same code that is deployed.
+
 ## Running the tests yourself
 
 ```bash
