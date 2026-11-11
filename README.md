@@ -4,7 +4,7 @@
 
 Inventory and ordering portal with three roles: Staff, Manager and Admin. The frontend is React (Vite), and the backend uses Express 5, MySQL/MariaDB, bcrypt and JWT.
 
-**Live:** https://inventoryorderingportal.cloud (v2.3.0, Milestone 2) · **This branch: v2.4.0** (Milestone 3: search, sort and pages, Users and Profile screens, security, accessibility and performance tests)
+**Live:** https://inventoryorderingportal.cloud · **Current version: v2.4.0** (Milestone 3: search, sort and pages, Users and Profile screens, security, accessibility and performance tests)
 
 ## Try it live
 
