@@ -65,6 +65,12 @@ async function changePassword(req, res) {
 
 // ---- admin account management (reqs 2.2.6, 2.3.4, 2.5.7) ----
 
+// GET /api/users  (req 2.2.6) - every account, for the admin's Users page (FE-06, FE-15)
+async function listUsers(req, res) {
+  const users = await userModel.findAll();
+  res.status(200).json(users.map(toPublicUser));
+}
+
 // POST /api/users  (req 2.2.6) - create a new account
 async function createUser(req, res) {
   const { fullName, email, password, role } = req.body;
@@ -133,6 +139,7 @@ async function updateStatus(req, res) {
 }
 
 module.exports = {
+  listUsers,
   getProfile,
   updateProfile,
   changePassword,

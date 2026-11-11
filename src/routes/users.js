@@ -13,6 +13,7 @@ router.put('/profile', userController.updateProfile);
 router.put('/profile/password', userController.changePassword);
 
 // admin-only account management (req 2.2.6)
+router.get('/', requireRole('Admin'), userController.listUsers);
 router.post('/', requireRole('Admin'), userController.createUser);
 router.get('/:id/account', requireRole('Admin'), userController.getAccount);
 router.put('/:id/role', requireRole('Admin'), userController.updateRole);

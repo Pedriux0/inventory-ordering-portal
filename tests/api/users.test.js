@@ -118,6 +118,27 @@ describe('profile routes (reqs 2.3.1 - 2.3.3)', () => {
 });
 
 describe('admin account management (reqs 2.2.6, 2.3.4, 2.5.7)', () => {
+  test('GET /api/users lists every account for an Admin, without password hashes (req 2.2.6)', async () => {
+    userModel.findAll.mockResolvedValue([fakeUserRow(), fakeUserRow({ user_id: 7, full_name: 'Morgan Manager', role: 'Manager' })]);
+
+    const res = await request(app)
+      .get('/api/users')
+      .set('Authorization', `Bearer ${tokenFor(1, 'Admin')}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    expect(res.body[1]).toEqual(expect.objectContaining({ userId: 7, role: 'Manager', isActive: true }));
+    expect(JSON.stringify(res.body)).not.toContain('password');
+  });
+
+  test('GET /api/users is blocked for Staff and Managers', async () => {
+    for (const role of ['Staff', 'Manager']) {
+      const res = await request(app).get('/api/users').set('Authorization', `Bearer ${tokenFor(3, role)}`);
+      expect(res.status).toBe(403);
+    }
+    expect(userModel.findAll).not.toHaveBeenCalled();
+  });
+
   test('POST /api/users is blocked for a Staff token', async () => {
     const res = await request(app)
       .post('/api/users')

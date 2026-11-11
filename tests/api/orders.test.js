@@ -80,16 +80,19 @@ describe('orders (reqs 2.4.3, 2.5.3)', () => {
   });
 
   test('GET /api/orders lists orders with numbers, not text', async () => {
-    orderModel.findAll.mockResolvedValue([
-      {
-        order_id: 100,
-        order_date: '2026-10-19',
-        total_amount: '249.95',
-        created_by_name: 'Maria Garcia',
-        line_count: 1,
-        unit_count: '5',
-      },
-    ]);
+    orderModel.findAll.mockResolvedValue({
+      rows: [
+        {
+          order_id: 100,
+          order_date: '2026-10-19',
+          total_amount: '249.95',
+          created_by_name: 'Maria Garcia',
+          line_count: 1,
+          unit_count: '5',
+        },
+      ],
+      total: 1,
+    });
 
     const res = await request(app)
       .get('/api/orders')
@@ -99,6 +102,45 @@ describe('orders (reqs 2.4.3, 2.5.3)', () => {
     expect(res.body[0]).toEqual(
       expect.objectContaining({ orderId: 100, totalAmount: 249.95, unitCount: 5, createdBy: 'Maria Garcia' })
     );
+  });
+
+  // API-11 (req 2.6.2)
+  test('API-11 GET /api/orders?search=2026-10-01 returns the orders of that date', async () => {
+    orderModel.findAll.mockResolvedValue({ rows: [], total: 0 });
+
+    const res = await request(app)
+      .get('/api/orders?search=2026-10-01')
+      .set('Authorization', `Bearer ${tokenFor(3, 'Staff')}`);
+
+    expect(res.status).toBe(200);
+    expect(orderModel.findAll).toHaveBeenCalledWith(expect.objectContaining({ orderDate: '2026-10-01' }));
+    expect(res.headers['x-total-count']).toBe('0');
+  });
+
+  test('searching by order number ("#100" or "100") looks up that order id', async () => {
+    orderModel.findAll.mockResolvedValue({ rows: [], total: 0 });
+
+    await request(app).get('/api/orders?search=%23100').set('Authorization', `Bearer ${tokenFor(3, 'Staff')}`);
+    expect(orderModel.findAll).toHaveBeenCalledWith(expect.objectContaining({ orderId: 100 }));
+  });
+
+  test('a search that is neither a number nor a date returns 400', async () => {
+    const res = await request(app)
+      .get('/api/orders?search=yesterday')
+      .set('Authorization', `Bearer ${tokenFor(3, 'Staff')}`);
+    expect(res.status).toBe(400);
+    expect(orderModel.findAll).not.toHaveBeenCalled();
+  });
+
+  test('orders can be paged: ?page=2&limit=25 skips the first 25', async () => {
+    orderModel.findAll.mockResolvedValue({ rows: [], total: 40 });
+
+    const res = await request(app)
+      .get('/api/orders?page=2&limit=25')
+      .set('Authorization', `Bearer ${tokenFor(3, 'Staff')}`);
+    expect(res.status).toBe(200);
+    expect(orderModel.findAll).toHaveBeenCalledWith(expect.objectContaining({ limit: 25, offset: 25 }));
+    expect(res.headers['x-total-count']).toBe('40');
   });
 
   test('GET /api/orders/:id returns 404 for an unknown order', async () => {
