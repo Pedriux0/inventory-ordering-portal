@@ -1,8 +1,10 @@
-# Inventory Ordering Portal
+# Inventory Ordering Portal (redesign)
+
+[![Automated tests](https://github.com/Pedriux0/inventory-ordering-portal/actions/workflows/tests.yml/badge.svg?branch=ui-redesign)](https://github.com/Pedriux0/inventory-ordering-portal/actions/workflows/tests.yml) · [what each test covers](docs/TESTS.md)
 
 Inventory and ordering portal with three roles: Staff, Manager and Admin. The frontend is React (Vite), and the backend uses Express 5, MySQL/MariaDB, bcrypt and JWT.
 
-**Current version: v2.0.0 (Milestone 2: products, inventory receipts, orders, suppliers and the React frontend)**
+**Current version: v3.4.0** (redesign line, up to Milestone 3: search, sort and pages, Users and Profile screens, security, accessibility and performance tests). The classic version the client sees is on `milestone-2-approvals` / `milestone-3` (v2.x); the two lines are kept separate.
 
 ## Diagram
 
@@ -137,9 +139,14 @@ Demo logins (created by `npm run seed`):
 
 | Command | What it runs |
 |---|---|
-| `npm test` | Unit and API tests (Jest + Supertest), with the models mocked so no database is needed |
-| `npm run test:db` | Real-database tests: UT-09, stock after a receipt or order, rollback, and two simultaneous orders |
-| `cd client && npm run test:e2e` | Cypress frontend tests (FE-01–05, FE-10, FE-11). The app must be running and seeded |
+| `npm test` | 151 unit, API and security tests (Jest + Supertest), with the models mocked so no database is needed |
+| `npm run test:db` | 34 real-database tests: UT-09, stock, rollback, simultaneous orders and approvals, search and paging, SEC-01/02/03/06/07 |
+| `cd client && npm run test:e2e` | 43 Cypress browser tests: FE-01 to FE-17 and A11Y-01 to A11Y-03 (axe-core, light and dark mode). The app must be running and seeded |
+| `npm run test:a11y` | A11Y-03 with real key presses and A11Y-04 Lighthouse (accessibility score 100) |
+| `npm run test:security` | OWASP ZAP scan of every API endpoint (SEC-01, SEC-02). Needs Docker; local or test copy only |
+| `npm run test:perf` | Artillery PERF-01 (20 users, 60 s) and PERF-02 (10 orders at once). Local or test copy only |
+
+All six run automatically on GitHub on every push. [docs/TESTS.md](docs/TESTS.md) maps every test ID from the proposal to its test.
 
 If Cypress fails to start from a VS Code terminal with `bad option: --ping`, run it as `env -u ELECTRON_RUN_AS_NODE npm run test:e2e`.
 
