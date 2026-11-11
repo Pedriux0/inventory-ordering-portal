@@ -327,3 +327,76 @@ This was found by the SEC-01 test.
 | Cypress hangs on a screenshot | `npx cypress run --config screenshotOnRunFailure=false` |
 | Demo data got messy | `docker exec portal-test-db mariadb -uroot -ptest_root -e "DROP DATABASE inventory_portal" && docker exec -i portal-test-db mariadb -uroot -ptest_root < db/schema.sql && npm run seed` |
 | Anything else | Show the green GitHub Actions run and its videos: the same tests, already run |
+
+---
+
+## 9. How it all works: what to say if she asks
+
+### What is a test?
+
+> *"Every test does three things: **prepare** something, **do** one action, **check** the result with `expect`. If every check holds, it passes; if one doesn't, it fails and says which line."*
+
+Example to open, `tests/api/products.test.js:96` (API-05):
+
+| Lines | What happens |
+|---|---|
+| 97 | **Prepare:** a fake database that will answer with one product, "Blue Widget" |
+| 99–101 | **Do:** send a real request, `GET /api/products?search=Widget`, with a Staff login token |
+| 103–106 | **Check:** status is 200, the search word reached the database code, the product came back, and the total header says 1 |
+
+### How do the test tools end up green or red?
+
+> *"Every tool ends with an exit code: 0 means everything passed, anything else means something failed. Terminals and GitHub both read that number. That's the whole trick behind the green check and the red cross."*
+
+### What GitHub Actions does
+
+> *"The file `.github/workflows/tests.yml` is a recipe. Every time I push code, GitHub reads it and starts six brand-new Linux machines in its cloud, one per job, all at the same time. Each machine follows the recipe from zero:*
+> 1. *download my code;*
+> 2. *install Node and the exact package versions from `package-lock.json`;*
+> 3. *start an empty MariaDB database and create the tables from `db/schema.sql`;*
+> 4. *load the demo data;*
+> 5. *start the API and the website;*
+> 6. *run the tests.*
+>
+> *When it's done, GitHub keeps the results and the videos and reports (the Artifacts), and throws the machine away. Every run starts clean, so nobody can say 'it only works on your laptop'."*
+
+Show it: open a run → click a job → expand a step to show its log.
+
+> *"There's a second recipe, `live-check.yml`, for the live site. It needs no database: the machine just sends its checks over the internet to inventoryorderingportal.cloud, like any visitor would."*
+
+### What each terminal command does
+
+**`source meeting-env.sh`**
+> *"Sets three things for this terminal: which database to use (my local test database in Docker), which browser the accessibility test should open, and it removes one VS Code setting that stops Cypress from starting."*
+
+**`npm test`** (Jest + Supertest)
+> *"npm runs the `test` script from `package.json`, which is Jest. Jest finds every `.test.js` file and runs it. Supertest sends real HTTP requests straight into my Express app, without a network. The database is replaced with a fake (`jest.mock`), so these 151 tests check my rules: status codes, validation, roles, error messages. That's why they take 3 seconds."*
+
+**`npm run test:db`**
+> *"Same Jest, but only the `.int.js` files, and with the real database. One at a time (`--runInBand`), because they share the database. Each test creates its own rows and deletes them at the end. This is where I prove the SQL itself is right: real injection attempts, bcrypt hashes in the table, the log rows, 30 deliveries at the same moment."*
+
+**`npx cypress open` / `npx cypress run`**
+> *"Cypress opens a real browser on my website and acts like a person: it types in the login form, clicks buttons, and checks what appears on the screen. `open` shows it with a window so you can watch; `run` does all of them without a window, which is what GitHub uses, and records a video. For accessibility, my `checkPage` command loads axe-core into the page and runs the WCAG 2.1 AA rules on whatever is on the screen."*
+
+**`npm run test:a11y`**
+> *"A Node script that uses Puppeteer to control a real Chrome. It logs in by pressing real Tab and Enter keys only, then presses Tab through each page and records which element has the focus, to prove every control can be reached by keyboard. Then it runs Google's Lighthouse on three pages and needs an accessibility score of 90 or more. We get 100."*
+
+**`npm run test:perf`**
+> *"Runs Artillery twice:*
+> - *PERF-01: 20 virtual users log in and keep using the portal for 60 seconds (browsing, searching, recording deliveries). Artillery itself fails the run if any request fails or if 99% of answers aren't under 2 seconds.*
+> - *PERF-02: 10 orders for the same product at the exact same moment.*
+>
+> *Then my script checks the numbers afterwards: every delivery is in the stock, and the stock after the 10 orders is exactly 100 minus 30."*
+
+**`npm run test:security`**
+> *"A script that starts OWASP ZAP (a security scanner) in Docker. It creates a throwaway Admin account so the demo accounts are never touched. It gives ZAP my API description (`docs/openapi.yaml`, every endpoint) and the login. ZAP then sends attack versions of every field: SQL injection, XSS and more. The script counts the findings and fails if any is High risk."*
+
+**`gh workflow run live-check.yml --ref milestone-3`**
+> *"`gh` is GitHub's command-line tool. This asks GitHub to start the live-site workflow right now, instead of waiting for a push."*
+
+**`docker ps` / `docker start portal-test-db`**
+> *"Shows / starts the container with my local test database."*
+
+### Why some tests don't run on the live site
+
+> *"Some tests create data, send attacks or put load on the server. On the live site that would leave junk in the real database and slow down the other websites that share the server. So those run on GitHub's throwaway copy of exactly the same code, and the live site gets only the tests that read and look."*
