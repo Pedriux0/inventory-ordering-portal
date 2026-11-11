@@ -1,6 +1,7 @@
 const orderModel = require('../models/orderModel');
 const { validateOrder } = require('../utils/validators');
 const { StockError } = require('../utils/stock');
+const { parsePaging, readSearch, readId, isIsoDate } = require('../utils/listQuery');
 
 // POST /api/orders  (req 2.5.3, API-04) - process a sales order
 // body: { items: [{ productId, quantity }, ...] }
@@ -25,8 +26,27 @@ async function createOrder(req, res) {
 }
 
 // GET /api/orders - order history, newest first
+// week 7: ?search= an order number ("12" or "#12") or a date ("2026-10-01") (req 2.6.2),
+// ?page=&limit= (req 2.6.4). The total that match goes in the X-Total-Count header
 async function listOrders(req, res) {
-  const rows = await orderModel.findAll();
+  const search = readSearch(req.query.search);
+  const filters = {};
+  if (search) {
+    if (readId(search)) filters.orderId = readId(search);
+    else if (isIsoDate(search)) filters.orderDate = search;
+    else return res.status(400).json({ error: 'Search orders by order number (e.g. 12) or date (YYYY-MM-DD)' });
+  }
+  const paging = parsePaging(req.query);
+  if (paging.error) {
+    return res.status(400).json({ error: paging.error });
+  }
+
+  const { rows, total } = await orderModel.findAll({
+    ...filters,
+    limit: paging.paged ? paging.limit : undefined,
+    offset: paging.paged ? paging.offset : 0,
+  });
+  res.set('X-Total-Count', String(total));
   res.status(200).json(
     rows.map((row) => ({
       orderId: row.order_id,

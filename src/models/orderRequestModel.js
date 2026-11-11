@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { retryOnConflict } = require('../utils/retry');
 const { StockError } = require('../utils/stock');
 const { insertOrder } = require('./orderModel');
 
@@ -43,7 +44,7 @@ async function findById(requestId) {
 }
 
 // Staff send an order for approval: the request and its lines are saved together
-async function createRequest(userId, items) {
+async function createRequestOnce(userId, items) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -68,7 +69,7 @@ async function createRequest(userId, items) {
 // (same code and stock rules as any order, the order belongs to the Staff member who asked)
 // and the request is marked Approved. If stock ran out meanwhile, everything rolls back
 // and the request stays Pending, so the manager can decline it instead.
-async function approve(requestId, decidedBy) {
+async function approveOnce(requestId, decidedBy) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -117,6 +118,16 @@ async function decline(requestId, decidedBy, note) {
     [decidedBy, note, requestId]
   );
   return result.affectedRows === 1;
+}
+
+// the whole transaction runs again if the database reports a temporary conflict (utils/retry.js)
+function createRequest(userId, items) {
+  return retryOnConflict(() => createRequestOnce(userId, items));
+}
+
+// the whole transaction runs again if the database reports a temporary conflict (utils/retry.js)
+function approve(requestId, decidedBy) {
+  return retryOnConflict(() => approveOnce(requestId, decidedBy));
 }
 
 module.exports = { findAll, findById, createRequest, approve, decline };

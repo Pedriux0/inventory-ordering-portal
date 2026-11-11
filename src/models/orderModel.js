@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { retryOnConflict } = require('../utils/retry');
 const { StockError, calculateStockAfterOrder } = require('../utils/stock');
 
 // all the sql for orders + order_items lives in this file (reqs 2.4.3, 2.5.3)
@@ -66,7 +67,7 @@ async function insertOrder(conn, userId, items) {
 
 // req 2.5.3, API-04: processes a sales order straight away (Managers and Admins)
 // one transaction for everything: if ANY product is short on stock, nothing is saved (rollback)
-async function createOrder(userId, items) {
+async function createOrderOnce(userId, items) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -82,18 +83,36 @@ async function createOrder(userId, items) {
 }
 
 // order history, newest first, with who made it and how many units
-// (search by id/date and pagination are week 7, reqs 2.6.2 and 2.6.4)
-async function findAll() {
+// week 7: req 2.6.2 search by order id OR order date, req 2.6.4 pages
+// options: { orderId, orderDate: 'YYYY-MM-DD', limit, offset }, returns { rows, total }
+async function findAll({ orderId, orderDate, limit, offset = 0 } = {}) {
+  const where = [];
+  const values = [];
+  if (orderId) {
+    where.push('o.order_id = ?');
+    values.push(orderId);
+  }
+  if (orderDate) {
+    where.push('o.order_date = ?');
+    values.push(orderDate);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  // LIMIT/OFFSET are numbers already checked by parsePaging, so they are safe to write in
+  const pageSql = limit ? `LIMIT ${Number(limit)} OFFSET ${Number(offset)}` : '';
+
   const [rows] = await pool.execute(
     `SELECT o.order_id, o.order_date, o.total_amount, u.full_name AS created_by_name,
             COUNT(oi.order_item_id) AS line_count, COALESCE(SUM(oi.quantity_sold), 0) AS unit_count
      FROM orders o
      JOIN users u ON u.user_id = o.user_id
      LEFT JOIN order_items oi ON oi.order_id = o.order_id
+     ${whereSql}
      GROUP BY o.order_id, o.order_date, o.total_amount, u.full_name
-     ORDER BY o.order_id DESC`
+     ORDER BY o.order_id DESC ${pageSql}`,
+    values
   );
-  return rows;
+  const [count] = await pool.execute(`SELECT COUNT(*) AS total FROM orders o ${whereSql}`, values);
+  return { rows, total: Number(count[0].total) };
 }
 
 // one order with all its lines
@@ -114,6 +133,11 @@ async function findById(orderId) {
     [orderId]
   );
   return { ...orders[0], items };
+}
+
+// the whole transaction runs again if the database reports a temporary conflict (utils/retry.js)
+function createOrder(userId, items) {
+  return retryOnConflict(() => createOrderOnce(userId, items));
 }
 
 module.exports = { insertOrder, createOrder, findAll, findById };

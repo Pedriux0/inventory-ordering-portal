@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { ClipboardCheck, LayoutDashboard, LogOut, Package, ShoppingCart, Truck, Warehouse } from 'lucide-react'
+import { ClipboardCheck, LayoutDashboard, LogOut, Package, ShoppingCart, Truck, UserRound, UsersRound, Warehouse } from 'lucide-react'
 import { useAuth } from '../auth'
 import { ThemeToggle } from './ui'
 
@@ -8,7 +8,7 @@ const ICON_SIZE = 20;
 
 // sidebar + top bar around every logged in page (mockup 2)
 export default function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
 
   async function handleSignOut() {
@@ -39,9 +39,11 @@ export default function Layout() {
         <p className="nav-section">Management</p>
         <NavLink to="/suppliers"><Truck size={ICON_SIZE} aria-hidden="true" /> Suppliers</NavLink>
         <NavLink to="/requests"><ClipboardCheck size={ICON_SIZE} aria-hidden="true" /> Requests</NavLink>
+        {isAdmin && <NavLink to="/users"><UsersRound size={ICON_SIZE} aria-hidden="true" /> Users</NavLink>}
 
         <div className="nav-bottom">
           <p className="nav-section">Account</p>
+          <NavLink to="/profile"><UserRound size={ICON_SIZE} aria-hidden="true" /> Profile</NavLink>
           <button type="button" className="nav-button" onClick={handleSignOut}>
             <LogOut size={ICON_SIZE} aria-hidden="true" /> Sign Out
           </button>

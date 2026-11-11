@@ -4,17 +4,25 @@ import { Pencil, Plus } from 'lucide-react'
 import { api, money } from '../api'
 import Drawer from '../components/Drawer'
 import { useToast } from '../components/Toast'
-import { Field, Message, PageHeader, StockBadge, focusFirstError } from '../components/ui'
+import { Field, Message, PageHeader, Pagination, SearchBar, SortHeader, StockBadge, focusFirstError } from '../components/ui'
 import { useSaving } from '../hooks'
 import { hasErrors, productErrors } from '../validation'
+
+const PAGE_SIZE = 25; // req 2.6.4
 
 const EMPTY_FORM = { productName: '', description: '', unitPrice: '', currentStock: '', reorderLevel: '' };
 
 // products page: list + create / edit in a side panel (mockup 3, FE-03, reqs 2.4.1 and 2.5.1)
+// week 7 (mockup 7): search by name or #id (2.6.1, FE-07), sort by name / price / stock
+// (2.6.3, FE-08), 25 per page (2.6.4, FE-13). The server does the search, sort and paging,
+// so it stays fast with thousands of products
 export default function Products() {
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [query, setQuery] = useState({ search: '', sort: 'name', order: 'asc', page: 1 });
+  const [searchInput, setSearchInput] = useState('');
   const [loadError, setLoadError] = useState('');
   const [loaded, setLoaded] = useState(false); // false = still loading, never show "no products" yet
   const [saving, guard] = useSaving();
@@ -24,13 +32,14 @@ export default function Products() {
   const [serverError, setServerError] = useState('');
   const formRef = useRef(null);
 
-  async function loadProducts() {
+  async function loadProducts(q = query) {
     try {
-      // products that need reordering come first, most urgent at the top
-      // (stock as a share of the reorder level), everything else stays A-Z like the api sends it
-      const urgency = (p) => (p.lowStock ? p.currentStock / Math.max(p.reorderLevel, 1) : Number.MAX_VALUE);
-      const list = await api.get('/products');
-      setProducts([...list].sort((a, b) => urgency(a) - urgency(b)));
+      const params = new URLSearchParams({ sort: q.sort, order: q.order, page: q.page, limit: PAGE_SIZE });
+      if (q.search) params.set('search', q.search);
+      const { items, total: count } = await api.getPage(`/products?${params}`);
+      setProducts(items);
+      setTotal(count);
+      setLoadError('');
     } catch (err) {
       setLoadError(err.message);
     } finally {
@@ -39,8 +48,24 @@ export default function Products() {
   }
 
   useEffect(() => {
-    loadProducts();
-  }, []);
+    loadProducts(query);
+  }, [query]);
+
+  function handleSearch(event) {
+    event.preventDefault();
+    setQuery({ ...query, search: searchInput.trim(), page: 1 }); // a new search starts at page 1
+  }
+
+  function clearSearch() {
+    setSearchInput('');
+    setQuery({ ...query, search: '', page: 1 });
+  }
+
+  // clicking the column you are sorting by flips the order, a new column starts ascending
+  function handleSort(column) {
+    const order = query.sort === column && query.order === 'asc' ? 'desc' : 'asc';
+    setQuery({ ...query, sort: column, order, page: 1 });
+  }
 
   function openCreate() {
     setEditing('new');
@@ -102,6 +127,13 @@ export default function Products() {
         if (isNew) {
           await api.post('/products', { ...body, currentStock: Number(form.currentStock) });
           toast(`Product "${form.productName.trim()}" created.`);
+          // with 25 per page the new product could be on another page: show it straight away
+          // (as a search for its name, removable with the chip like any search)
+          const name = form.productName.trim();
+          setEditing(null);
+          setSearchInput(name);
+          setQuery({ ...query, search: name, page: 1 });
+          return;
         } else {
           await api.put(`/products/${editing.productId}`, body);
           toast(`Product "${form.productName.trim()}" updated.`);
@@ -114,13 +146,11 @@ export default function Products() {
     });
   }
 
-  const lowCount = products.filter((p) => p.lowStock).length;
-
   return (
     <>
       <PageHeader
         title="Products"
-        description={loaded ? `${products.length} products${lowCount ? ` · ${lowCount} need reordering` : ''}` : 'Loading...'}
+        description={loaded ? (query.search ? 'Search results' : `${total} products`) : 'Loading...'}
       >
         <button type="button" className="btn btn-primary" onClick={openCreate}>
           <Plus size={18} aria-hidden="true" /> New product
@@ -129,14 +159,26 @@ export default function Products() {
 
       <Message>{loadError}</Message>
 
+      <SearchBar
+        id="product-search"
+        label="Search products"
+        placeholder="Search by name or #id, e.g. lamp or #12"
+        value={searchInput}
+        onChange={setSearchInput}
+        onSubmit={handleSearch}
+        active={query.search}
+        total={total}
+        onClear={clearSearch}
+      />
+
       <section className="card card-flush">
         <table className="responsive">
           <thead>
             <tr>
-              <th>Product</th>
-              <th className="num">Stock</th>
+              <SortHeader column="name" label="Product" sort={query.sort} order={query.order} onSort={handleSort} />
+              <SortHeader column="stock" label="Stock" className="num" sort={query.sort} order={query.order} onSort={handleSort} />
               <th className="num">Reorder level</th>
-              <th className="num">Unit price</th>
+              <SortHeader column="price" label="Unit price" className="num" sort={query.sort} order={query.order} onSort={handleSort} />
               <th>Status</th>
               <th><span className="sr-only">Actions</span></th>
             </tr>
@@ -148,13 +190,13 @@ export default function Products() {
                 <td>
                   <div className="cell-title">{product.productName}</div>
                   <div className="cell-sub">
-                    #{product.productId}
+                    <span data-cy="product-id">#{product.productId}</span>
                     {product.description && ` · ${product.description}`}
                   </div>
                 </td>
-                <td className="num" data-label="Stock">{product.currentStock}</td>
+                <td className="num" data-label="Stock" data-cy="stock">{product.currentStock}</td>
                 <td className="num" data-label="Reorder level">{product.reorderLevel}</td>
-                <td className="num" data-label="Unit price">{money(product.unitPrice)}</td>
+                <td className="num" data-label="Unit price" data-cy="price">{money(product.unitPrice)}</td>
                 <td data-label="Status"><StockBadge currentStock={product.currentStock} reorderLevel={product.reorderLevel} /></td>
                 <td>
                   <div className="actions">
@@ -169,8 +211,11 @@ export default function Products() {
         </table>
         {!loaded && <p className="empty" role="status">Loading products...</p>}
         {loaded && products.length === 0 && !loadError && (
-          <p className="empty">No products yet. Create your first one with “New product”.</p>
+          <p className="empty">
+            {query.search ? 'No products match your search. Try part of the name, or #id.' : 'No products yet. Create your first one with “New product”.'}
+          </p>
         )}
+        <Pagination page={query.page} pageSize={PAGE_SIZE} total={total} onPage={(page) => setQuery({ ...query, page })} label="Products pages" />
       </section>
 
       {editing && (

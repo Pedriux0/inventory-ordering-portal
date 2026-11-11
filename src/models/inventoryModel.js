@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { retryOnConflict } = require('../utils/retry');
 const { StockError, calculateStockAfterReceipt } = require('../utils/stock');
 
 // inventory = current stock levels (req 2.5.4) + inventory receipts (reqs 2.4.2, 2.5.2)
@@ -18,7 +19,7 @@ async function findStockLevels() {
 // both happen in one transaction: either both are saved or neither is
 // "FOR UPDATE" locks the product row until we commit, so two people receiving
 // the same product at the same moment cant overwrite each other (req 3.4.1)
-async function createReceipt({ productId, supplierId, quantity, dateReceived, receivedBy }) {
+async function createReceiptOnce({ productId, supplierId, quantity, dateReceived, receivedBy }) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -72,6 +73,11 @@ async function findRecentReceipts(limit = 25) {
      LIMIT ${safeLimit}`
   );
   return rows;
+}
+
+// the whole transaction runs again if the database reports a temporary conflict (utils/retry.js)
+function createReceipt({ productId, supplierId, quantity, dateReceived, receivedBy }) {
+  return retryOnConflict(() => createReceiptOnce({ productId, supplierId, quantity, dateReceived, receivedBy }));
 }
 
 module.exports = { findStockLevels, createReceipt, findRecentReceipts };

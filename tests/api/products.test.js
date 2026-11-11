@@ -79,10 +79,10 @@ describe('products (reqs 2.4.1, 2.5.1)', () => {
   });
 
   test('GET /api/products lists products and flags low stock', async () => {
-    productModel.findAll.mockResolvedValue([
-      fakeProductRow(),
-      fakeProductRow({ product_id: 2, product_name: 'Wireless Mouse M200', current_stock: 3 }),
-    ]);
+    productModel.findAll.mockResolvedValue({
+      rows: [fakeProductRow(), fakeProductRow({ product_id: 2, product_name: 'Wireless Mouse M200', current_stock: 3 })],
+      total: 2,
+    });
 
     const res = await request(app)
       .get('/api/products')
@@ -90,6 +90,58 @@ describe('products (reqs 2.4.1, 2.5.1)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.map((p) => p.lowStock)).toEqual([false, true]);
+  });
+
+  // API-05 (req 2.6.1)
+  test('API-05 GET /api/products?search=Widget returns the filtered list', async () => {
+    productModel.findAll.mockResolvedValue({ rows: [fakeProductRow({ product_name: 'Blue Widget' })], total: 1 });
+
+    const res = await request(app)
+      .get('/api/products?search=Widget')
+      .set('Authorization', `Bearer ${tokenFor(3, 'Staff')}`);
+
+    expect(res.status).toBe(200);
+    expect(productModel.findAll).toHaveBeenCalledWith(expect.objectContaining({ search: 'Widget' }));
+    expect(res.body[0].productName).toBe('Blue Widget');
+    expect(res.headers['x-total-count']).toBe('1');
+  });
+
+  // API-12 (req 2.6.4)
+  test('API-12 GET /api/products?page=2&limit=25 returns page 2 of 25', async () => {
+    productModel.findAll.mockResolvedValue({ rows: [], total: 60 });
+
+    const res = await request(app)
+      .get('/api/products?page=2&limit=25')
+      .set('Authorization', `Bearer ${tokenFor(3, 'Staff')}`);
+
+    expect(res.status).toBe(200);
+    expect(productModel.findAll).toHaveBeenCalledWith(expect.objectContaining({ limit: 25, offset: 25 }));
+    expect(res.headers['x-total-count']).toBe('60');
+  });
+
+  test('page without limit uses the default page size of 25 (req 2.6.4)', async () => {
+    productModel.findAll.mockResolvedValue({ rows: [], total: 0 });
+    await request(app).get('/api/products?page=1').set('Authorization', `Bearer ${tokenFor(3, 'Staff')}`);
+    expect(productModel.findAll).toHaveBeenCalledWith(expect.objectContaining({ limit: 25, offset: 0 }));
+  });
+
+  test('sorting by price, highest first (req 2.6.3)', async () => {
+    productModel.findAll.mockResolvedValue({ rows: [], total: 0 });
+    const res = await request(app)
+      .get('/api/products?sort=price&order=desc')
+      .set('Authorization', `Bearer ${tokenFor(3, 'Staff')}`);
+    expect(res.status).toBe(200);
+    expect(productModel.findAll).toHaveBeenCalledWith(expect.objectContaining({ sort: 'price', order: 'desc' }));
+  });
+
+  test('an unknown sort column, a bad page or a too-big limit returns 400', async () => {
+    for (const query of ['sort=password_hash', 'order=sideways', 'page=0', 'limit=1000', 'page=abc']) {
+      const res = await request(app)
+        .get(`/api/products?${query}`)
+        .set('Authorization', `Bearer ${tokenFor(3, 'Staff')}`);
+      expect(res.status).toBe(400);
+    }
+    expect(productModel.findAll).not.toHaveBeenCalled();
   });
 
   test('PUT /api/products/:id updates details but never the stock', async () => {

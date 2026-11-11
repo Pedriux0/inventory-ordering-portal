@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { Plus, ShoppingCart, Trash2 } from 'lucide-react'
-import { api, displayDate, money, plural } from '../api'
+import { api, displayDate, money, plural, shortDate } from '../api'
 import { useAuth } from '../auth'
 import Drawer from '../components/Drawer'
 import ProductPicker from '../components/ProductPicker'
 import { useToast } from '../components/Toast'
-import { Field, Message, PageHeader, focusFirstError } from '../components/ui'
+import { Field, Message, PageHeader, Pagination, SearchBar, focusFirstError } from '../components/ui'
 import { useSaving } from '../hooks'
 import { hasErrors, orderLineErrors } from '../validation'
+
+const PAGE_SIZE = 25; // req 2.6.4
 
 let nextLineKey = 1;
 const newLine = () => ({ key: nextLineKey++, productId: '', quantity: '1' });
@@ -31,22 +33,57 @@ export default function Orders() {
   const [loaded, setLoaded] = useState(false);
   const [placing, guard] = useSaving(); // also blocks a double click on "Place order"
   const formRef = useRef(null);
+  // order history: search by order number or date (2.6.2, FE-12) and 25 per page (2.6.4)
+  const [history, setHistory] = useState({ search: '', page: 1 });
+  const [searchInput, setSearchInput] = useState('');
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyError, setHistoryError] = useState('');
 
-  async function loadAll() {
+  async function loadProducts() {
     try {
-      const [productList, orderList] = await Promise.all([api.get('/products'), api.get('/orders')]);
-      setProducts(productList);
-      setOrders(orderList);
+      setProducts(await api.get('/products'));
     } catch (err) {
       setLoadError(err.message);
+    }
+  }
+
+  async function loadOrders(h = history) {
+    setHistoryError('');
+    try {
+      const params = new URLSearchParams({ page: h.page, limit: PAGE_SIZE });
+      if (h.search) params.set('search', h.search);
+      const { items, total } = await api.getPage(`/orders?${params}`);
+      setOrders(items);
+      setHistoryTotal(total);
+    } catch (err) {
+      setHistoryError(err.message); // e.g. "Search orders by order number (e.g. 12) or date (YYYY-MM-DD)"
     } finally {
       setLoaded(true);
     }
   }
 
+  function loadAll() {
+    loadProducts();
+    loadOrders();
+  }
+
   useEffect(() => {
-    loadAll();
+    loadProducts();
   }, []);
+
+  useEffect(() => {
+    loadOrders(history);
+  }, [history]);
+
+  function handleSearch(event) {
+    event.preventDefault();
+    setHistory({ search: searchInput.trim(), page: 1 });
+  }
+
+  function clearSearch() {
+    setSearchInput('');
+    setHistory({ search: '', page: 1 });
+  }
 
   // ready for the next customer: after an order, focus goes back to the first product field
   // (before, it was lost to the top of the page - docs/UX_EVALUATION.md). An effect runs after
@@ -228,10 +265,24 @@ export default function Orders() {
 
       <section className="card card-flush">
         <h2>Order history</h2>
+        <div className="card-pad">
+          <SearchBar
+            id="order-search"
+            label="Search orders"
+            placeholder="Order number or date, e.g. 12 or 2026-10-01"
+            value={searchInput}
+            onChange={setSearchInput}
+            onSubmit={handleSearch}
+            active={historyError ? '' : history.search}
+            total={historyTotal}
+            onClear={clearSearch}
+          />
+          <Message>{historyError}</Message>
+        </div>
         {!loaded ? (
           <p className="empty" role="status">Loading orders...</p>
         ) : orders.length === 0 ? (
-          <p className="empty">No orders yet. Place the first one with the form above.</p>
+          <p className="empty">{history.search ? 'No orders match your search.' : 'No orders yet. Place the first one with the form above.'}</p>
         ) : (
           <table className="responsive">
             <thead>
@@ -244,7 +295,7 @@ export default function Orders() {
               {orders.map((order) => (
                 <tr key={order.orderId} className={selected && selected.orderId === order.orderId ? 'selected' : ''}>
                   <td className="cell-title">#{order.orderId}</td>
-                  <td data-label="Date">{displayDate(order.orderDate)}</td>
+                  <td data-label="Date" data-cy="order-date" data-date={shortDate(order.orderDate)}>{displayDate(order.orderDate)}</td>
                   <td className="num" data-label="Products">{order.lineCount}</td>
                   <td className="num" data-label="Units">{order.unitCount}</td>
                   <td className="num" data-label="Total">{money(order.totalAmount)}</td>
@@ -261,6 +312,9 @@ export default function Orders() {
             </tbody>
           </table>
         )}
+        <div className="card-pad">
+          <Pagination page={history.page} pageSize={PAGE_SIZE} total={historyTotal} onPage={(page) => setHistory({ ...history, page })} label="Order history pages" />
+        </div>
       </section>
 
       {selected && (

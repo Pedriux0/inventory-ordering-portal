@@ -8,11 +8,20 @@ import Inventory from './pages/Inventory'
 import Orders from './pages/Orders'
 import Suppliers from './pages/Suppliers'
 import Requests from './pages/Requests'
+import Users from './pages/Users'
+import Profile from './pages/Profile'
+import AccessDenied from './pages/AccessDenied'
 
 // pages behind the login: if there is no user, go to /login first
 function RequireLogin({ children }) {
   const { user } = useAuth();
   return user ? children : <Navigate to="/login" replace />;
+}
+
+// pages for one role only: anyone else sees the 403 page (mockup 5), the api blocks them too
+function RequireRole({ role, children }) {
+  const { user } = useAuth();
+  return user.role === role ? children : <AccessDenied />;
 }
 
 export default function App() {
@@ -34,6 +43,15 @@ export default function App() {
         <Route path="/inventory" element={<Inventory />} />
         <Route path="/suppliers" element={<Suppliers />} />
         <Route path="/requests" element={<Requests />} />
+        <Route path="/profile" element={<Profile />} />
+        <Route
+          path="/users"
+          element={
+            <RequireRole role="Admin">
+              <Users />
+            </RequireRole>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

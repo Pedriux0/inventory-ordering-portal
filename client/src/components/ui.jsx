@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CircleAlert, Moon, Sun, TriangleAlert } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, CircleAlert, Moon, Search, Sun, TriangleAlert, X } from 'lucide-react'
 import { getTheme, setTheme } from '../theme'
 
 // small pieces reused by several pages
@@ -125,5 +125,73 @@ export function ThemeToggle({ className = '' }) {
     >
       {theme === 'dark' ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
     </button>
+  );
+}
+
+// ---------- week 7: search, sort and pages (reqs 2.6.1 - 2.6.4) ----------
+
+// search box + the active search shown as a chip you can remove (mockup 7)
+// the search only runs on Enter / the button, so the list does not jump around while typing
+export function SearchBar({ id, label, placeholder, value, onChange, onSubmit, active, total, onClear }) {
+  return (
+    <div className="search-area">
+      <form className="search-bar" role="search" onSubmit={onSubmit} aria-label={label}>
+        <label htmlFor={id} className="sr-only">{label}</label>
+        <div className="search-input">
+          <Search size={16} aria-hidden="true" className="search-icon" />
+          <input id={id} type="search" placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
+        </div>
+        <button type="submit" className="btn">Search</button>
+      </form>
+      {active && (
+        <p className="chips">
+          <span className="chip">
+            Search: “{active}”
+            <button type="button" onClick={onClear} aria-label={`Remove search ${active}`}>
+              <X size={14} aria-hidden="true" />
+            </button>
+          </span>
+          {total !== undefined && <span className="muted small">{total} found</span>}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// a column header you can click to sort by (req 2.6.3); aria-sort tells screen readers the order
+export function SortHeader({ column, label, sort, order, onSort, className = '' }) {
+  const active = sort === column;
+  const ariaSort = active ? (order === 'asc' ? 'ascending' : 'descending') : 'none';
+  const Icon = !active ? ArrowUpDown : order === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <th className={className} aria-sort={ariaSort}>
+      <button type="button" className={active ? 'sort-button sort-active' : 'sort-button'} onClick={() => onSort(column)}>
+        {label}
+        <Icon size={13} aria-hidden="true" />
+      </button>
+    </th>
+  );
+}
+
+// page controls under a long list (req 2.6.4, 25 per page): "Showing 26-50 of 60" + previous / next
+export function Pagination({ page, pageSize, total, onPage, label }) {
+  if (total <= pageSize) return null; // everything fits on one page
+  const pages = Math.ceil(total / pageSize);
+  const first = (page - 1) * pageSize + 1;
+  const last = Math.min(page * pageSize, total);
+  return (
+    <nav className="pagination" aria-label={label}>
+      <span aria-live="polite">
+        Showing {first}-{last} of {total} · page {page} of {pages}
+      </span>
+      <div className="actions">
+        <button type="button" className="btn btn-small" onClick={() => onPage(page - 1)} disabled={page <= 1}>
+          <ChevronLeft size={14} aria-hidden="true" /> Previous<span className="sr-only"> page</span>
+        </button>
+        <button type="button" className="btn btn-small" onClick={() => onPage(page + 1)} disabled={page >= pages}>
+          Next<span className="sr-only"> page</span> <ChevronRight size={14} aria-hidden="true" />
+        </button>
+      </div>
+    </nav>
   );
 }

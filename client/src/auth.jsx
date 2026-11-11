@@ -43,11 +43,19 @@ export function AuthProvider({ children }) {
     }
   }
 
+  // after the user edits their own name / email on the Profile page (FE-09)
+  function updateUser(changes) {
+    const next = { ...user, ...changes };
+    sessionStorage.setItem(USER_KEY, JSON.stringify(next));
+    setUser(next);
+  }
+
   // role checks for showing/hiding buttons, the api still enforces the real rule
   const canManageSuppliers = user && ['Manager', 'Admin'].includes(user.role);
+  const isAdmin = Boolean(user && user.role === 'Admin');
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, canManageSuppliers }}>
+    <AuthContext.Provider value={{ user, login, logout, updateUser, canManageSuppliers, isAdmin }}>
       {children}
     </AuthContext.Provider>
   );

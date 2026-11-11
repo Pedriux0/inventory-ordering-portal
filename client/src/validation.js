@@ -67,3 +67,40 @@ export function requestErrors(form) {
 export function declineErrors(reason) {
   return reason.trim() ? {} : { reason: 'Write a reason, so the person who asked knows why' };
 }
+
+// password rules from src/utils/password.js (req 2.1.2): 16+ characters, upper, lower and a number
+export function passwordError(password) {
+  if (password.length < 16) return 'Use at least 16 characters';
+  if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {
+    return 'Use upper case, lower case and at least one number';
+  }
+  return null;
+}
+
+// new account (Admin, req 2.2.6)
+export function userErrors(form) {
+  const errors = {};
+  if (!form.fullName.trim()) errors.fullName = 'Full name is required';
+  if (!isEmail(form.email.trim())) errors.email = 'Enter an email like name@company.com';
+  const password = passwordError(form.password);
+  if (password) errors.password = password;
+  return errors;
+}
+
+// profile details (req 2.3.2)
+export function profileErrors(form) {
+  const errors = {};
+  if (!form.fullName.trim()) errors.fullName = 'Full name is required';
+  if (!isEmail(form.email.trim())) errors.email = 'Enter an email like name@company.com';
+  return errors;
+}
+
+// change password (req 2.3.3)
+export function changePasswordErrors(form) {
+  const errors = {};
+  if (!form.currentPassword) errors.currentPassword = 'Enter your current password';
+  const password = passwordError(form.newPassword);
+  if (password) errors.newPassword = password;
+  else if (form.newPassword !== form.confirmPassword) errors.confirmPassword = 'The new passwords do not match';
+  return errors;
+}

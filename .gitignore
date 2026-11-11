@@ -3,3 +3,6 @@ node_modules/
 *.log
 .postman/
 postman/
+security/reports/
+perf/reports/
+a11y/reports/
