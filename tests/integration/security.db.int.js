@@ -46,14 +46,19 @@ describe('SEC-01 SQL injection (req 3.1.1)', () => {
     }
   });
 
-  test('SEC-01 injection in a search finds nothing extra and breaks nothing', async () => {
-    const before = await countRows('products');
+  test('SEC-01 injection in a search finds nothing and breaks nothing', async () => {
+    // at least one product exists, so an "OR 1=1" that worked would return it
+    const [p] = await pool.execute(
+      "INSERT INTO products (product_name, unit_price, current_stock, reorder_level) VALUES (?, 1, 1, 0)",
+      [`SEC search target ${STAMP}`]
+    );
+    createdProductIds.push(p.insertId);
     for (const search of PAYLOADS) {
       const res = await request(app)
         .get(`/api/products?search=${encodeURIComponent(search)}`)
         .set('Authorization', `Bearer ${staffToken}`);
       expect(res.status).toBe(200);
-      expect(Number(res.headers['x-total-count'])).toBeLessThan(before); // "OR 1=1" did not return everything
+      expect({ search, found: Number(res.headers['x-total-count']) }).toEqual({ search, found: 0 }); // matched nothing
     }
     expect(await countRows('users')).toBeGreaterThan(0); // the DROP TABLE did nothing
   });
