@@ -1,0 +1,76 @@
+# Live site check: tests the REAL deployed site, https://inventoryorderingportal.cloud
+# Three jobs, all SAFE for production (they read, they never create, change or attack anything):
+#   1. live API checks     - search, sort, pages, roles, injection, errors, headers  (live/live-check.mjs)
+#   2. live accessibility  - real keyboard + Lighthouse on the live pages            (a11y/run-a11y.mjs)
+#   3. live security scan  - OWASP ZAP baseline: PASSIVE, no attack payloads         (security/zap-live-baseline.sh)
+# The tests that create data, attack the API or load the server run on a throwaway copy
+# in tests.yml, never here.
+#
+# How to start it: open any run of this workflow -> "Re-run all jobs", or from a terminal:
+#   gh workflow run live-check.yml --ref milestone-3
+name: Live site check
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Site to check
+        default: https://inventoryorderingportal.cloud
+  push:
+    branches: [milestone-3]
+    paths:
+      - live/**
+      - security/zap-live-baseline.sh
+      - .github/workflows/live-check.yml
+
+env:
+  LIVE_URL: ${{ inputs.url || 'https://inventoryorderingportal.cloud' }}
+
+jobs:
+  api:
+    name: 1. Live API checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Search, sort, pages, roles, injection, errors and headers on the live site
+        run: node live/live-check.mjs "$LIVE_URL"
+
+  accessibility:
+    name: 2. Live accessibility (real keyboard + Lighthouse)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: A11Y-03 real Tab / Enter and A11Y-04 Lighthouse on the live pages
+        run: CHROME_PATH="$(which google-chrome)" node a11y/run-a11y.mjs "$LIVE_URL"
+      - name: Save the Lighthouse reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-lighthouse-reports
+          path: a11y/reports
+          if-no-files-found: ignore
+
+  security:
+    name: 3. Live security scan (OWASP ZAP baseline, passive)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Passive scan of the live site (fails on any High risk)
+        run: security/zap-live-baseline.sh "$LIVE_URL"
+      - name: Save the ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-zap-report
+          path: |
+            security/reports/zap-live-report.html
+            security/reports/zap-live-report.json
+          if-no-files-found: ignore
