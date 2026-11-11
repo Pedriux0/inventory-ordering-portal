@@ -51,7 +51,9 @@ async function changePassword(req, res) {
   const currentIsCorrect =
     authRow && (await comparePassword(currentPassword || '', authRow.password_hash));
   if (!currentIsCorrect) {
-    return res.status(401).json({ error: 'Current password is incorrect' });
+    // 400, not 401: the user IS logged in (401 would make the website end their session),
+    // they only typed their current password wrong
+    return res.status(400).json({ error: 'Current password is incorrect' });
   }
 
   const errors = validatePassword(newPassword);

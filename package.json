@@ -10,7 +10,8 @@
     "seed": "node db/seed.js",
     "test:db": "jest --testRegex '\\.int\\.js$' --runInBand",
     "test:security": "security/zap-scan.sh",
-    "test:perf": "node perf/run-perf.js"
+    "test:perf": "node perf/run-perf.js",
+    "test:a11y": "node a11y/run-a11y.mjs"
   },
   "keywords": [],
   "author": "",
@@ -26,7 +27,9 @@
   },
   "devDependencies": {
     "jest": "^30.5.2",
+    "lighthouse": "^13.6.0",
     "nodemon": "^3.1.14",
+    "puppeteer-core": "^25.17.0",
     "supertest": "^7.2.2"
   }
 }

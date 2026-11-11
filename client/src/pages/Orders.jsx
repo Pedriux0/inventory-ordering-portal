@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { api, money, shortDate } from '../api'
 import { useAuth } from '../auth'
-import { Message } from '../components/ui'
+import { Message, Pagination } from '../components/ui'
+import { useSaving } from '../hooks'
+
+const PAGE_SIZE = 25; // req 2.6.4
 
 const EMPTY_LINE = { productId: '', quantity: '1' };
 
@@ -17,20 +20,54 @@ export default function Orders() {
   const [sentForApproval, setSentForApproval] = useState(null); // the last Staff order sent to a Manager
   const [selected, setSelected] = useState(null); // order opened in the details panel
   const [error, setError] = useState('');
+  const [saving, guard] = useSaving();
+  // order history: search by order number or date (2.6.2, FE-12) and 25 per page (2.6.4)
+  const [history, setHistory] = useState({ search: '', page: 1 });
+  const [searchInput, setSearchInput] = useState('');
+  const [historyTotal, setHistoryTotal] = useState(0);
+  const [historyError, setHistoryError] = useState('');
+  const [loaded, setLoaded] = useState(false);
 
-  async function loadAll() {
+  async function loadProducts() {
     try {
-      const [productList, orderList] = await Promise.all([api.get('/products'), api.get('/orders')]);
-      setProducts(productList);
-      setOrders(orderList);
+      setProducts(await api.get('/products'));
     } catch (err) {
       setError(err.message);
     }
   }
 
+  async function loadOrders(h = history) {
+    setHistoryError('');
+    try {
+      const params = new URLSearchParams({ page: h.page, limit: PAGE_SIZE });
+      if (h.search) params.set('search', h.search);
+      const { items, total } = await api.getPage(`/orders?${params}`);
+      setOrders(items);
+      setHistoryTotal(total);
+    } catch (err) {
+      setHistoryError(err.message); // e.g. "Search orders by order number (e.g. 12) or date (YYYY-MM-DD)"
+    } finally {
+      setLoaded(true);
+    }
+  }
+
+  function loadAll() {
+    loadProducts();
+    loadOrders();
+  }
+
   useEffect(() => {
-    loadAll();
+    loadProducts();
   }, []);
+
+  useEffect(() => {
+    loadOrders(history);
+  }, [history]);
+
+  function handleSearch(event) {
+    event.preventDefault();
+    setHistory({ search: searchInput.trim(), page: 1 });
+  }
 
   function updateLine(index, field, value) {
     setLines(lines.map((line, i) => (i === index ? { ...line, [field]: value } : line)));
@@ -52,18 +89,21 @@ export default function Orders() {
     setConfirmed(null);
     setSentForApproval(null);
     const items = lines.map((line) => ({ productId: Number(line.productId), quantity: Number(line.quantity) }));
-    try {
-      if (canOrderDirectly) {
-        setConfirmed(await api.post('/orders', { items }));
-      } else {
-        // Staff: the order waits for a Manager, stock only goes down once it is approved
-        setSentForApproval(await api.post('/order-requests', { items }));
+    // the guard stops a double click from placing the same order twice
+    await guard(async () => {
+      try {
+        if (canOrderDirectly) {
+          setConfirmed(await api.post('/orders', { items }));
+        } else {
+          // Staff: the order waits for a Manager, stock only goes down once it is approved
+          setSentForApproval(await api.post('/order-requests', { items }));
+        }
+        setLines([EMPTY_LINE]);
+        loadAll();
+      } catch (err) {
+        setError(err.message); // e.g. "Wireless Mouse M200: Not enough stock: 3 available, 5 requested"
       }
-      setLines([EMPTY_LINE]);
-      loadAll();
-    } catch (err) {
-      setError(err.message); // e.g. "Wireless Mouse M200: Not enough stock: 3 available, 5 requested"
-    }
+    });
   }
 
   async function openOrder(orderId) {
@@ -141,7 +181,9 @@ export default function Orders() {
             + Add product
           </button>
           <span className="order-total">Estimated total: <strong>{money(estimatedTotal)}</strong></span>
-          <button type="submit" className="btn btn-primary">{canOrderDirectly ? 'Place order' : 'Send for approval'}</button>
+          <button type="submit" className="btn btn-primary" disabled={saving}>
+            {saving ? 'Sending...' : canOrderDirectly ? 'Place order' : 'Send for approval'}
+          </button>
         </div>
       </form>
 
@@ -173,8 +215,42 @@ export default function Orders() {
 
       <section className="card">
         <h2>Order history</h2>
-        {orders.length === 0 ? (
-          <p className="muted">No orders yet.</p>
+        <form className="search-bar" role="search" onSubmit={handleSearch}>
+          <label htmlFor="order-search">Search orders</label>
+          <div className="search-row">
+            <input
+              id="order-search"
+              type="search"
+              placeholder="Order number or date, e.g. 12 or 2026-10-01"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+            <button type="submit" className="btn">Search</button>
+          </div>
+        </form>
+        <Message>{historyError}</Message>
+        {history.search && !historyError && (
+          <p className="chips">
+            <span className="chip">
+              Search: “{history.search}”
+              <button
+                type="button"
+                aria-label={`Remove search ${history.search}`}
+                onClick={() => {
+                  setSearchInput('');
+                  setHistory({ search: '', page: 1 });
+                }}
+              >
+                ×
+              </button>
+            </span>
+            <span className="muted small">{historyTotal} found</span>
+          </p>
+        )}
+        {!loaded ? (
+          <p className="muted" role="status">Loading orders...</p>
+        ) : orders.length === 0 ? (
+          <p className="muted">{history.search ? 'No orders match your search.' : 'No orders yet.'}</p>
         ) : (
           <table>
             <thead>
@@ -199,6 +275,13 @@ export default function Orders() {
             </tbody>
           </table>
         )}
+        <Pagination
+          page={history.page}
+          pageSize={PAGE_SIZE}
+          total={historyTotal}
+          onPage={(page) => setHistory({ ...history, page })}
+          label="Order history pages"
+        />
       </section>
     </>
   );

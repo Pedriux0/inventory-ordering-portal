@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { api, shortDate, today } from '../api'
 import { Message, StockBadge } from '../components/ui'
+import { useSaving } from '../hooks'
 
 // inventory page: current stock (FE-11, req 2.5.4) + record a receipt (FE-10, req 2.5.2)
 export default function Inventory() {
+  const [saving, guard] = useSaving(); // stops a double click from saving twice
   const [stock, setStock] = useState([]);
   const [receipts, setReceipts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
@@ -39,20 +41,22 @@ export default function Inventory() {
     event.preventDefault();
     setError('');
     setSuccess('');
-    try {
-      const receipt = await api.post('/inventory/receipts', {
-        productId: Number(form.productId),
-        supplierId: Number(form.supplierId),
-        quantity: Number(form.quantity),
-        dateReceived: form.dateReceived,
-      });
-      const product = stock.find((p) => p.productId === receipt.productId);
-      setSuccess(`Received ${receipt.quantity} × ${product ? product.productName : 'product'}. Stock is now ${receipt.newStock}.`);
-      setForm({ ...form, quantity: '' });
-      loadAll();
-    } catch (err) {
-      setError(err.message);
-    }
+    await guard(async () => {
+      try {
+        const receipt = await api.post('/inventory/receipts', {
+          productId: Number(form.productId),
+          supplierId: Number(form.supplierId),
+          quantity: Number(form.quantity),
+          dateReceived: form.dateReceived,
+        });
+        const product = stock.find((p) => p.productId === receipt.productId);
+        setSuccess(`Received ${receipt.quantity} × ${product ? product.productName : 'product'}. Stock is now ${receipt.newStock}.`);
+        setForm({ ...form, quantity: '' });
+        loadAll();
+      } catch (err) {
+        setError(err.message);
+      }
+    });
   }
 
   return (
@@ -93,7 +97,7 @@ export default function Inventory() {
           </div>
         </div>
         <div className="form-actions">
-          <button type="submit" className="btn btn-primary">Record receipt</button>
+          <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving...' : 'Record receipt'}</button>
         </div>
       </form>
 

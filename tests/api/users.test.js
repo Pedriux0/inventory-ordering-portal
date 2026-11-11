@@ -96,7 +96,7 @@ describe('profile routes (reqs 2.3.1 - 2.3.3)', () => {
       .set('Authorization', `Bearer ${tokenFor(42, 'Staff')}`)
       .send({ currentPassword: 'WrongOne1234567890!', newPassword: NEW_PASSWORD });
 
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(400); // 400 not 401: a wrong current password must not end the session
     expect(userModel.updatePasswordHash).not.toHaveBeenCalled();
   });
 
