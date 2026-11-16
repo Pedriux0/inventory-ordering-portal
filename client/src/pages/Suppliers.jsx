@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { useAuth } from '../auth'
 import { Message } from '../components/ui'
+import { useSaving } from '../hooks'
 
 const EMPTY_FORM = { supplierName: '', contactEmail: '', contactPhone: '' };
 
@@ -9,6 +10,7 @@ const EMPTY_FORM = { supplierName: '', contactEmail: '', contactPhone: '' };
 // everyone can see the list, only Manager and Admin get the buttons
 // (hiding buttons is just for a clean screen, the api is what really blocks Staff with a 403)
 export default function Suppliers() {
+  const [saving, guard] = useSaving(); // stops a double click from saving twice
   const { canManageSuppliers } = useAuth();
   const [suppliers, setSuppliers] = useState([]);
   const [form, setForm] = useState(null);
@@ -50,19 +52,21 @@ export default function Suppliers() {
   async function handleSubmit(event) {
     event.preventDefault();
     setError('');
-    try {
-      if (editingId) {
-        await api.put(`/suppliers/${editingId}`, form);
-        setSuccess(`Supplier "${form.supplierName}" updated.`);
-      } else {
-        await api.post('/suppliers', form);
-        setSuccess(`Supplier "${form.supplierName}" created.`);
+    await guard(async () => {
+      try {
+        if (editingId) {
+          await api.put(`/suppliers/${editingId}`, form);
+          setSuccess(`Supplier "${form.supplierName}" updated.`);
+        } else {
+          await api.post('/suppliers', form);
+          setSuccess(`Supplier "${form.supplierName}" created.`);
+        }
+        setForm(null);
+        loadSuppliers();
+      } catch (err) {
+        setError(err.message);
       }
-      setForm(null);
-      loadSuppliers();
-    } catch (err) {
-      setError(err.message);
-    }
+    });
   }
 
   async function toggleActive(supplier) {
@@ -114,7 +118,7 @@ export default function Suppliers() {
           </div>
 
           <div className="form-actions">
-            <button type="submit" className="btn btn-primary">{editingId ? 'Save changes' : 'Create supplier'}</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving...' : editingId ? 'Save changes' : 'Create supplier'}</button>
             <button type="button" className="btn" onClick={() => setForm(null)}>Cancel</button>
           </div>
         </form>

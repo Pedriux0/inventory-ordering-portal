@@ -6,6 +6,10 @@ const createApp = require('./app');
 const port = process.env.PORT || 3000;
 const app = createApp();
 
-app.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
+// HOST=127.0.0.1 in production: only NGINX on the same machine can reach the api,
+// nobody can skip HTTPS by calling the port directly. Not set = all interfaces (fine for dev)
+const host = process.env.HOST;
+
+app.listen(port, host, () => {
+  console.log(`Server listening on ${host || 'all interfaces'}, port ${port}`);
 });

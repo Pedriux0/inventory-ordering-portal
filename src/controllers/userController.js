@@ -51,7 +51,9 @@ async function changePassword(req, res) {
   const currentIsCorrect =
     authRow && (await comparePassword(currentPassword || '', authRow.password_hash));
   if (!currentIsCorrect) {
-    return res.status(401).json({ error: 'Current password is incorrect' });
+    // 400, not 401: the user IS logged in (401 would make the website end their session),
+    // they only typed their current password wrong
+    return res.status(400).json({ error: 'Current password is incorrect' });
   }
 
   const errors = validatePassword(newPassword);
@@ -64,6 +66,12 @@ async function changePassword(req, res) {
 }
 
 // ---- admin account management (reqs 2.2.6, 2.3.4, 2.5.7) ----
+
+// GET /api/users  (req 2.2.6) - every account, for the admin's Users page (FE-06, FE-15)
+async function listUsers(req, res) {
+  const users = await userModel.findAll();
+  res.status(200).json(users.map(toPublicUser));
+}
 
 // POST /api/users  (req 2.2.6) - create a new account
 async function createUser(req, res) {
@@ -133,6 +141,7 @@ async function updateStatus(req, res) {
 }
 
 module.exports = {
+  listUsers,
   getProfile,
   updateProfile,
   changePassword,

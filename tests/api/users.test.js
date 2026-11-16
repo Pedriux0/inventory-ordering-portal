@@ -96,7 +96,7 @@ describe('profile routes (reqs 2.3.1 - 2.3.3)', () => {
       .set('Authorization', `Bearer ${tokenFor(42, 'Staff')}`)
       .send({ currentPassword: 'WrongOne1234567890!', newPassword: NEW_PASSWORD });
 
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(400); // 400 not 401: a wrong current password must not end the session
     expect(userModel.updatePasswordHash).not.toHaveBeenCalled();
   });
 
@@ -118,6 +118,27 @@ describe('profile routes (reqs 2.3.1 - 2.3.3)', () => {
 });
 
 describe('admin account management (reqs 2.2.6, 2.3.4, 2.5.7)', () => {
+  test('GET /api/users lists every account for an Admin, without password hashes (req 2.2.6)', async () => {
+    userModel.findAll.mockResolvedValue([fakeUserRow(), fakeUserRow({ user_id: 7, full_name: 'Morgan Manager', role: 'Manager' })]);
+
+    const res = await request(app)
+      .get('/api/users')
+      .set('Authorization', `Bearer ${tokenFor(1, 'Admin')}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    expect(res.body[1]).toEqual(expect.objectContaining({ userId: 7, role: 'Manager', isActive: true }));
+    expect(JSON.stringify(res.body)).not.toContain('password');
+  });
+
+  test('GET /api/users is blocked for Staff and Managers', async () => {
+    for (const role of ['Staff', 'Manager']) {
+      const res = await request(app).get('/api/users').set('Authorization', `Bearer ${tokenFor(3, role)}`);
+      expect(res.status).toBe(403);
+    }
+    expect(userModel.findAll).not.toHaveBeenCalled();
+  });
+
   test('POST /api/users is blocked for a Staff token', async () => {
     const res = await request(app)
       .post('/api/users')
@@ -128,9 +149,12 @@ describe('admin account management (reqs 2.2.6, 2.3.4, 2.5.7)', () => {
     expect(userModel.createUser).not.toHaveBeenCalled();
   });
 
-  test('POST /api/users creates an account for an Admin token', async () => {
+  // UT-07 (reqs 2.2.1, 2.2.2)
+  test('UT-07 POST /api/users creates an account with all its fields (Admin token)', async () => {
     userModel.emailExists.mockResolvedValue(false);
-    userModel.createUser.mockResolvedValue(fakeUserRow({ user_id: 99, email: 'new@company.com' }));
+    userModel.createUser.mockResolvedValue(
+      fakeUserRow({ user_id: 99, full_name: 'New Guy', email: 'new@company.com', role: 'Staff' })
+    );
 
     const res = await request(app)
       .post('/api/users')
@@ -138,7 +162,11 @@ describe('admin account management (reqs 2.2.6, 2.3.4, 2.5.7)', () => {
       .send({ fullName: 'New Guy', email: 'new@company.com', password: NEW_PASSWORD, role: 'Staff' });
 
     expect(res.status).toBe(201);
-    expect(res.body.userId).toBe(99);
+    // the account object has userId, fullName, email and role, and never the password hash
+    expect(res.body).toEqual(
+      expect.objectContaining({ userId: 99, fullName: 'New Guy', email: 'new@company.com', role: 'Staff' })
+    );
+    expect(JSON.stringify(res.body)).not.toContain('password');
   });
 
   // API-06 (reqs 2.2.3, 2.5.7)

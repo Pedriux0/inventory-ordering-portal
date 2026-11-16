@@ -21,7 +21,7 @@ export function setUnauthorizedHandler(handler) {
   onUnauthorized = handler;
 }
 
-async function request(method, path, body) {
+async function request(method, path, body, { withTotal = false } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -44,11 +44,17 @@ async function request(method, path, body) {
     err.status = res.status;
     throw err;
   }
+  // paged lists (week 7): the api sends how many records match in the X-Total-Count header
+  if (withTotal) {
+    return { items: data, total: Number(res.headers.get('X-Total-Count') ?? data.length) };
+  }
   return data;
 }
 
 export const api = {
   get: (path) => request('GET', path),
+  // { items, total } for a paged list, e.g. api.getPage('/products?page=2&limit=25')
+  getPage: (path) => request('GET', path, undefined, { withTotal: true }),
   post: (path, body) => request('POST', path, body),
   put: (path, body) => request('PUT', path, body),
 };

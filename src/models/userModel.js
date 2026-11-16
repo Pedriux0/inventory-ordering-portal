@@ -22,6 +22,14 @@ async function findById(userId) {
   return rows[0];
 }
 
+// req 2.2.6: the admin's list of accounts, never with the password hash (req 2.2.2)
+async function findAll() {
+  const [rows] = await pool.execute(
+    'SELECT user_id, full_name, email, role, is_active FROM users ORDER BY full_name'
+  );
+  return rows;
+}
+
 // used only when we need to check the current password (change password flow)
 async function findAuthById(userId) {
   const [rows] = await pool.execute(
@@ -88,6 +96,7 @@ async function setResetToken(userId, tokenHash, expiresAt) {
 }
 
 module.exports = {
+  findAll,
   findByEmail,
   setResetToken,
   findById,

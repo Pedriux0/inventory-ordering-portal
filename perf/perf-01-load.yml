@@ -1,0 +1,51 @@
+# PERF-01 (req 3.4.1): 20 users using the portal at the same time for 60 seconds
+# every response must be 200/201 and quick (p99 < 2s). Run through perf/run-perf.js, which also
+# checks afterwards that no delivery was lost (the stock must match exactly).
+config:
+  target: "{{ $env.TARGET }}"
+  processor: ./perf-functions.js
+  phases:
+    - name: 20 users arrive, then keep working for 60 seconds
+      duration: 5
+      arrivalCount: 20
+  plugins:
+    expect: {}
+    ensure: {}
+  ensure:
+    thresholds:
+      - http.response_time.p99: 2000 # 99% of answers faster than 2 seconds
+    maxErrorRate: 0 # no failed requests at all
+scenarios:
+  - name: a staff member working
+    flow:
+      - function: setup
+      - post:
+          url: /api/auth/login
+          json: { email: "{{ $env.PERF_EMAIL }}", password: "{{ $env.PERF_PASSWORD }}" }
+          capture: { json: $.token, as: token }
+          expect: [{ statusCode: 200 }]
+      - loop:
+          - get:
+              url: /api/products?page=1&limit=25&sort=name
+              headers: { Authorization: "Bearer {{ token }}" }
+              expect: [{ statusCode: 200 }]
+          - get:
+              url: /api/inventory
+              headers: { Authorization: "Bearer {{ token }}" }
+              expect: [{ statusCode: 200 }]
+          - get:
+              url: /api/orders?page=1&limit=25
+              headers: { Authorization: "Bearer {{ token }}" }
+              expect: [{ statusCode: 200 }]
+          - post:
+              # every user records 1 unit delivered to the same product, at the same time as the others
+              url: /api/inventory/receipts
+              headers: { Authorization: "Bearer {{ token }}" }
+              json:
+                productId: "{{ productId }}"
+                supplierId: "{{ supplierId }}"
+                quantity: 1
+                dateReceived: "2026-10-01"
+              expect: [{ statusCode: 201 }]
+          - think: 1
+        whileTrue: keepGoing

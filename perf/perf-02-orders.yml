@@ -1,0 +1,26 @@
+# PERF-02 (req 3.4.1): 10 orders for the same product at exactly the same moment
+# perf/run-perf.js then checks: stock = initial - total ordered (nothing sold twice, nothing lost)
+config:
+  target: "{{ $env.TARGET }}"
+  processor: ./perf-functions.js
+  phases:
+    - name: 10 simultaneous orders
+      duration: 1
+      arrivalCount: 10
+  plugins:
+    expect: {}
+    ensure: {}
+  ensure:
+    maxErrorRate: 0
+scenarios:
+  - name: a manager placing an order
+    flow:
+      - function: setup
+      - post:
+          url: /api/orders
+          headers: { Authorization: "Bearer {{ $env.PERF_TOKEN }}" }
+          json:
+            items:
+              - productId: "{{ productId }}"
+                quantity: 3
+          expect: [{ statusCode: 201 }]

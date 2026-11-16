@@ -1,0 +1,298 @@
+openapi: 3.0.3
+info:
+  title: Inventory Ordering Portal API
+  version: 2.4.0
+  description: |
+    Every endpoint of the portal's REST API. Used as documentation, and by the
+    OWASP ZAP security scan (SEC-01, SEC-02), which sends attack payloads to each one.
+    All endpoints except login, password reset and health need `Authorization: Bearer <JWT>`.
+servers:
+  - url: http://localhost:3000
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, example: 1 }
+    userId:
+      name: id
+      in: path
+      required: true
+      # the security scan replaces this with the id of its own throwaway account
+      schema: { type: integer, example: 1 }
+  schemas:
+    Items:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              productId: { type: integer, example: 1 }
+              quantity: { type: integer, example: 1 }
+    Decision:
+      type: object
+      properties:
+        decision: { type: string, example: Declined }
+        note: { type: string, example: Not needed this week }
+security:
+  - bearer: []
+paths:
+  /api/health:
+    get:
+      security: []
+      responses: { '200': { description: ok } }
+  /api/auth/login:
+    post:
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, example: staff@demo.com }
+                password: { type: string, example: DemoStaffPass2026 }
+      responses: { '200': { description: token } }
+  /api/auth/resetpassword:
+    post:
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, example: staff@demo.com }
+      responses: { '200': { description: same answer for every email } }
+  /api/auth/logout:
+    post:
+      responses: { '200': { description: logged out } }
+  /api/users:
+    get:
+      responses: { '200': { description: every account (Admin) } }
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName: { type: string, example: New Person }
+                email: { type: string, example: new.person@demo.com }
+                password: { type: string, example: NewPersonPass2026 }
+                role: { type: string, example: Staff }
+      responses: { '201': { description: created } }
+  /api/users/profile:
+    get:
+      responses: { '200': { description: own profile } }
+    put:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fullName: { type: string, example: Maria Garcia }
+                email: { type: string, example: staff@demo.com }
+      responses: { '200': { description: updated } }
+  /api/users/profile/password:
+    put:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                currentPassword: { type: string, example: WrongCurrentPass2026 }
+                newPassword: { type: string, example: AnotherPassword2026 }
+      responses: { '200': { description: changed } }
+  /api/users/{id}/account:
+    parameters: [{ $ref: '#/components/parameters/userId' }]
+    get:
+      responses: { '200': { description: one account (Admin) } }
+  /api/users/{id}/role:
+    parameters: [{ $ref: '#/components/parameters/userId' }]
+    put:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { type: string, example: Staff }
+      responses: { '200': { description: role changed (Admin) } }
+  /api/users/{id}/status:
+    parameters: [{ $ref: '#/components/parameters/userId' }]
+    put:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                active: { type: boolean, example: true }
+      responses: { '200': { description: activated / deactivated (Admin) } }
+  /api/products:
+    get:
+      parameters:
+        - { name: search, in: query, schema: { type: string, example: Lamp } }
+        - { name: sort, in: query, schema: { type: string, example: price } }
+        - { name: order, in: query, schema: { type: string, example: desc } }
+        - { name: page, in: query, schema: { type: integer, example: 1 } }
+        - { name: limit, in: query, schema: { type: integer, example: 25 } }
+      responses: { '200': { description: products, total in X-Total-Count } }
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                productName: { type: string, example: Scan Test Product }
+                description: { type: string, example: created by the security scan }
+                unitPrice: { type: number, example: 9.99 }
+                currentStock: { type: integer, example: 5 }
+                reorderLevel: { type: integer, example: 1 }
+      responses: { '201': { description: created } }
+  /api/products/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      responses: { '200': { description: one product } }
+    put:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                productName: { type: string, example: Scan Test Product }
+                description: { type: string, example: edited by the security scan }
+                unitPrice: { type: number, example: 9.99 }
+                reorderLevel: { type: integer, example: 1 }
+      responses: { '200': { description: updated } }
+  /api/inventory:
+    get:
+      responses: { '200': { description: stock levels } }
+  /api/inventory/receipts:
+    get:
+      responses: { '200': { description: latest receipts } }
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                productId: { type: integer, example: 1 }
+                supplierId: { type: integer, example: 1 }
+                quantity: { type: integer, example: 1 }
+                dateReceived: { type: string, example: '2026-10-01' }
+      responses: { '201': { description: recorded } }
+  /api/orders:
+    get:
+      parameters:
+        - { name: search, in: query, schema: { type: string, example: '2026-10-01' } }
+        - { name: page, in: query, schema: { type: integer, example: 1 } }
+        - { name: limit, in: query, schema: { type: integer, example: 25 } }
+      responses: { '200': { description: orders, total in X-Total-Count } }
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Items' }
+      responses: { '201': { description: order placed (Manager, Admin) } }
+  /api/orders/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      responses: { '200': { description: one order } }
+  /api/order-requests:
+    get:
+      parameters:
+        - { name: status, in: query, schema: { type: string, example: Pending } }
+      responses: { '200': { description: sales orders waiting / decided } }
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Items' }
+      responses: { '201': { description: sent for approval } }
+  /api/order-requests/{id}/decision:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    put:
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Decision' }
+      responses: { '200': { description: decided (Manager, Admin) } }
+  /api/purchase-requests:
+    get:
+      parameters:
+        - { name: status, in: query, schema: { type: string, example: Pending } }
+      responses: { '200': { description: purchase requests } }
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                productId: { type: integer, example: 1 }
+                supplierId: { type: integer, example: 1 }
+                quantity: { type: integer, example: 5 }
+                note: { type: string, example: weekend promotion }
+      responses: { '201': { description: created } }
+  /api/purchase-requests/{id}/decision:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    put:
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Decision' }
+      responses: { '200': { description: decided (Manager, Admin) } }
+  /api/suppliers:
+    get:
+      responses: { '200': { description: suppliers } }
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                supplierName: { type: string, example: Scan Test Supplier }
+                contactEmail: { type: string, example: scan@supplier.test }
+                contactPhone: { type: string, example: '+1 555 000 1111' }
+      responses: { '201': { description: created (Manager, Admin) } }
+  /api/suppliers/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      responses: { '200': { description: one supplier } }
+    put:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                supplierName: { type: string, example: Scan Test Supplier }
+                contactEmail: { type: string, example: scan@supplier.test }
+                contactPhone: { type: string, example: '+1 555 000 1111' }
+      responses: { '200': { description: updated (Manager, Admin) } }
+  /api/suppliers/{id}/status:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    put:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                active: { type: boolean, example: true }
+      responses: { '200': { description: activated / deactivated (Manager, Admin) } }

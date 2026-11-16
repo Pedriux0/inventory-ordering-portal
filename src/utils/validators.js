@@ -134,6 +134,36 @@ function validateOrder({ items } = {}) {
   return errors;
 }
 
+// optional short text, at most 255 characters (fits the VARCHAR(255) note columns)
+function isOptionalShortText(value) {
+  return value === undefined || value === null || (typeof value === 'string' && value.length <= 255);
+}
+
+// req 2.2.5: checks a purchase request before it is saved
+function validatePurchaseRequest({ productId, supplierId, quantity, note } = {}) {
+  const errors = [];
+  if (!isPositiveWholeNumber(productId)) errors.push('A valid product is required');
+  if (!isPositiveWholeNumber(supplierId)) errors.push('A valid supplier is required');
+  if (!isPositiveWholeNumber(quantity)) errors.push('Quantity must be a whole number, 1 or more');
+  if (!isOptionalShortText(note)) errors.push('Note must be text, 255 characters or less');
+  return errors;
+}
+
+// req 2.2.5: a Manager's decision on a request
+// declining needs a reason, so the person who asked knows why
+function validateDecision({ decision, note } = {}) {
+  const errors = [];
+  if (!['Approved', 'Declined'].includes(decision)) {
+    errors.push('decision must be Approved or Declined');
+  }
+  if (!isOptionalShortText(note)) {
+    errors.push('Note must be text, 255 characters or less');
+  } else if (decision === 'Declined' && (typeof note !== 'string' || note.trim().length === 0)) {
+    errors.push('A reason is required when declining');
+  }
+  return errors;
+}
+
 module.exports = {
   validateEmail,
   validateFullName,
@@ -141,4 +171,6 @@ module.exports = {
   validateProduct,
   validateReceipt,
   validateOrder,
+  validatePurchaseRequest,
+  validateDecision,
 };

@@ -1,0 +1,257 @@
+# Automated tests (proposal section 4: "automated-first approach")
+# runs on GitHub's servers on every push, and can be started by hand from the Actions tab
+# ("Run workflow"). Six jobs, each one a separate green/red result:
+#   1. backend tests       - Jest + Supertest, models mocked          (UT-.., API-.., SEC-02/04/05)
+#   2. database tests      - against a real, fresh MariaDB            (UT-09, SEC-01/03/06/07, concurrency)
+#   3. browser tests       - Cypress + axe-core, video of every test  (FE-.., A11Y-01/02/03)
+#   4. accessibility       - real keyboard + Lighthouse >= 90         (A11Y-03, A11Y-04)
+#   5. security scan       - OWASP ZAP against the whole API          (SEC-01, SEC-02)
+#   6. performance         - Artillery load and concurrency           (PERF-01, PERF-02)
+name: Automated tests
+
+on:
+  push:
+    branches: [milestone-2-approvals, milestone-3, ui-redesign]
+  pull_request:
+  workflow_dispatch:
+
+# test-only values: a throwaway database that exists only during the run, never the real server
+env:
+  DB_HOST: 127.0.0.1
+  DB_PORT: 3306
+  DB_USER: root
+  DB_PASSWORD: ci_root_password
+  DB_NAME: inventory_portal
+  JWT_SECRET: ci-only-secret-not-used-anywhere-else
+
+jobs:
+  backend:
+    name: 1. Backend tests (Jest + Supertest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run unit, API and security tests
+        run: npx jest --verbose
+
+  database:
+    name: 2. Database tests (real MariaDB)
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: ci_root_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create the database from db/schema.sql
+        run: mysql -h 127.0.0.1 -u root -p"$DB_PASSWORD" < db/schema.sql
+      - name: Run real-database tests
+        run: npm run test:db -- --verbose
+
+  browser:
+    name: 3. Browser tests (Cypress + axe-core)
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: ci_root_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create the database and the demo data
+        run: |
+          mysql -h 127.0.0.1 -u root -p"$DB_PASSWORD" < db/schema.sql
+          npm run seed
+      - name: Start the API
+        run: |
+          nohup node src/server.js > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3000/api/health && exit 0; sleep 1; done
+          cat api.log; exit 1
+      - name: Install the website's packages
+        working-directory: client
+        run: npm ci
+      - name: Start the website
+        working-directory: client
+        run: |
+          nohup npx vite --port 5173 --host 127.0.0.1 > ../web.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:5173/ > /dev/null && exit 0; sleep 1; done
+          cat ../web.log; exit 1
+      - name: Run Cypress (records a video of every test)
+        uses: cypress-io/github-action@v6
+        with:
+          working-directory: client
+          install: false
+        env:
+          CYPRESS_BASE_URL: http://127.0.0.1:5173
+          CYPRESS_VIDEO: true # cypress.config.js turns video off for local runs, CI records them
+      - name: Save the test videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-videos
+          path: client/cypress/videos
+          if-no-files-found: ignore
+      - name: Save screenshots and logs (only when something failed)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failure-details
+          path: |
+            client/cypress/screenshots
+            api.log
+            web.log
+          if-no-files-found: ignore
+
+  accessibility:
+    name: 4. Accessibility (real keyboard + Lighthouse)
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: ci_root_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create the database and the demo data
+        run: |
+          mysql -h 127.0.0.1 -u root -p"$DB_PASSWORD" < db/schema.sql
+          npm run seed
+      - name: Start the API
+        run: |
+          nohup node src/server.js > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3000/api/health && exit 0; sleep 1; done
+          cat api.log; exit 1
+      - name: Install the website's packages
+        working-directory: client
+        run: CYPRESS_INSTALL_BINARY=0 npm ci
+      - name: Start the website
+        working-directory: client
+        run: |
+          nohup npx vite --port 5173 --host 127.0.0.1 > ../web.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:5173/ > /dev/null && exit 0; sleep 1; done
+          cat ../web.log; exit 1
+      - name: Real keyboard navigation (A11Y-03) and Lighthouse (A11Y-04)
+        run: CHROME_PATH="$(which google-chrome)" node a11y/run-a11y.mjs http://127.0.0.1:5173
+      - name: Save the Lighthouse reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-reports
+          path: a11y/reports
+          if-no-files-found: ignore
+
+  security:
+    name: 5. Security scan (OWASP ZAP)
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: ci_root_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create the database and the demo data
+        run: |
+          mysql -h 127.0.0.1 -u root -p"$DB_PASSWORD" < db/schema.sql
+          npm run seed
+      - name: Start the API
+        run: |
+          nohup node src/server.js > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3000/api/health && exit 0; sleep 1; done
+          cat api.log; exit 1
+      - name: OWASP ZAP API scan (fails on any High risk, e.g. SQL injection or XSS)
+        run: security/zap-scan.sh http://localhost:3000
+      - name: Save the ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: |
+            security/reports/zap-report.html
+            security/reports/zap-report.json
+            api.log
+          if-no-files-found: ignore
+
+  performance:
+    name: 6. Performance (Artillery)
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: ci_root_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create the database and the demo data
+        run: |
+          mysql -h 127.0.0.1 -u root -p"$DB_PASSWORD" < db/schema.sql
+          npm run seed
+      - name: Start the API
+        run: |
+          nohup node src/server.js > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:3000/api/health && exit 0; sleep 1; done
+          cat api.log; exit 1
+      - name: PERF-01 (20 users, 60 s) and PERF-02 (10 simultaneous orders)
+        run: node perf/run-perf.js http://localhost:3000
+      - name: Save the Artillery reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-reports
+          path: perf/reports
+          if-no-files-found: ignore

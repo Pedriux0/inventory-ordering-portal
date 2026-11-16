@@ -1,4 +1,5 @@
 const pool = require('../config/db');
+const { escapeLike, readId } = require('../utils/listQuery');
 
 // all the sql for the products table lives in this file
 // always ? placeholders, never glue input into the sql (req 3.1.1)
@@ -6,11 +7,36 @@ const pool = require('../config/db');
 const PRODUCT_COLUMNS =
   'product_id, product_name, description, unit_price, current_stock, reorder_level, created_at';
 
-// req 2.4.1: list every product, sorted by name
-// (search, sort options and pagination are week 7, reqs 2.6.1 - 2.6.4)
-async function findAll() {
-  const [rows] = await pool.execute(`SELECT ${PRODUCT_COLUMNS} FROM products ORDER BY product_name`);
-  return rows;
+// req 2.6.3: the only columns you can sort by. The sort name from the url is looked up here,
+// so user input never becomes part of the sql text
+const SORT_COLUMNS = { name: 'product_name', price: 'unit_price', stock: 'current_stock' };
+
+// req 2.4.1 + week 7 (reqs 2.6.1, 2.6.3, 2.6.4): products, optionally searched, sorted and paged
+// options: { search, sort: 'name'|'price'|'stock', order: 'asc'|'desc', limit, offset }
+// returns { rows, total } where total = how many match the search (for the page controls)
+async function findAll({ search = '', sort = 'name', order = 'asc', limit, offset = 0 } = {}) {
+  const where = [];
+  const values = [];
+  if (search) {
+    // req 2.6.1: by name (part of it) or by product id ("12" or "#12")
+    const id = readId(search);
+    where.push(id ? '(product_name LIKE ? OR product_id = ?)' : 'product_name LIKE ?');
+    values.push(`%${escapeLike(search)}%`);
+    if (id) values.push(id);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const column = SORT_COLUMNS[sort] || SORT_COLUMNS.name;
+  const direction = order === 'desc' ? 'DESC' : 'ASC';
+
+  // LIMIT/OFFSET are numbers already checked by parsePaging, so they are safe to write in
+  const pageSql = limit ? `LIMIT ${Number(limit)} OFFSET ${Number(offset)}` : '';
+  const [rows] = await pool.execute(
+    `SELECT ${PRODUCT_COLUMNS} FROM products ${whereSql}
+     ORDER BY ${column} ${direction}, product_id ${direction} ${pageSql}`,
+    values
+  );
+  const [count] = await pool.execute(`SELECT COUNT(*) AS total FROM products ${whereSql}`, values);
+  return { rows, total: Number(count[0].total) };
 }
 
 async function findById(productId) {
